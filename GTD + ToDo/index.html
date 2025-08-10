@@ -1,0 +1,1073 @@
+
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GTD 一頁式待辦清單</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="一頁式 GTD 待辦清單：收集、釐清、組織、檢視、執行。支援拖放、在地儲存、匯出/匯入。">
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <!-- App Container -->
+  <div class="min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-slate-200">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded bg-indigo-600 text-white flex items-center justify-center font-bold">G</div>
+          <h1 class="font-semibold text-lg">GTD 一頁待辦清單</h1>
+        </div>
+
+        <!-- Quick Capture -->
+        <form id="quickCaptureForm" class="flex-1 flex items-center gap-2" autocomplete="off">
+          <input id="quickCaptureInput" type="text" placeholder="快速收集：把腦中的事先丟進 Inbox（按 Enter 新增）"
+                 class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50" />
+          <button type="submit" class="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">新增</button>
+        </form>
+
+        <!-- Filters -->
+        <div class="hidden md:flex items-center gap-2">
+          <select id="filterContext" class="px-2 py-2 border border-slate-300 rounded-lg bg-white">
+            <option value="">情境：全部</option>
+          </select>
+          <select id="filterEnergy" class="px-2 py-2 border border-slate-300 rounded-lg bg-white">
+            <option value="">能量：全部</option>
+            <option value="low">低</option>
+            <option value="medium">中</option>
+            <option value="high">高</option>
+          </select>
+          <select id="filterTime" class="px-2 py-2 border border-slate-300 rounded-lg bg-white">
+            <option value="">時間：不限</option>
+            <option value="5">≤ 5 分</option>
+            <option value="15">≤ 15 分</option>
+            <option value="30">≤ 30 分</option>
+            <option value="60">≤ 60 分</option>
+          </select>
+          <button id="clearFiltersBtn" class="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100">清除篩選</button>
+        </div>
+
+        <!-- Data actions -->
+        <div class="flex items-center gap-2">
+          <button id="startReviewBtn" class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100">開始週回顧</button>
+          <button id="exportBtn" class="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100">匯出</button>
+          <label for="importInput" class="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 cursor-pointer">匯入</label>
+          <input id="importInput" type="file" accept="application/json" class="hidden" />
+        </div>
+      </div>
+    </header>
+
+    <!-- Main -->
+    <div class="flex-1 max-w-7xl mx-auto w-full px-4 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <!-- Sidebar -->
+      <aside class="lg:col-span-3">
+        <nav class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div class="p-3 border-b border-slate-200 font-medium text-slate-600">導覽</div>
+          <ul class="p-2">
+            <li><button data-view="board" class="nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50">儀表板（看板）</button></li>
+            <li><button data-view="projects" class="nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50">專案</button></li>
+            <li><button data-view="calendar" class="nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50">日曆（截止/延期）</button></li>
+            <li><button data-view="review" class="nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50">回顧</button></li>
+            <li><button data-view="completed" class="nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50">已完成</button></li>
+            <li><button id="resetBtn" class="w-full text-left px-3 py-2 rounded-lg hover:bg-rose-50 text-rose-700">清空（重置）</button></li>
+          </ul>
+        </nav>
+
+        <!-- Tips -->
+        <div class="mt-4 p-4 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-900">
+          GTD 五步：收集、釐清、組織、檢視、執行。先把一切丟進 Inbox，再逐步處理。
+        </div>
+      </aside>
+
+      <!-- Views -->
+      <section class="lg:col-span-9 flex flex-col gap-4">
+        <!-- Board View -->
+        <div id="view-board" class="view">
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+            <div class="column" data-status="inbox">
+              <div class="bg-white border border-slate-200 rounded-xl h-full flex flex-col">
+                <div class="px-3 py-2 border-b border-slate-200 flex items-center justify-between">
+                  <div class="font-medium">Inbox</div>
+                  <div class="text-xs text-slate-500" id="count-inbox">0</div>
+                </div>
+                <div class="flex-1 p-2 min-h-40 space-y-2 droptarget" data-status="inbox" aria-label="Inbox 列"></div>
+              </div>
+            </div>
+            <div class="column" data-status="next">
+              <div class="bg-white border border-slate-200 rounded-xl h-full flex flex-col">
+                <div class="px-3 py-2 border-b border-slate-200 flex items-center justify-between">
+                  <div class="font-medium">下一步行動</div>
+                  <div class="text-xs text-slate-500" id="count-next">0</div>
+                </div>
+                <div class="flex-1 p-2 min-h-40 space-y-2 droptarget" data-status="next" aria-label="下一步行動 列"></div>
+              </div>
+            </div>
+            <div class="column" data-status="waiting">
+              <div class="bg-white border border-slate-200 rounded-xl h-full flex flex-col">
+                <div class="px-3 py-2 border-b border-slate-200 flex items-center justify-between">
+                  <div class="font-medium">等待中</div>
+                  <div class="text-xs text-slate-500" id="count-waiting">0</div>
+                </div>
+                <div class="flex-1 p-2 min-h-40 space-y-2 droptarget" data-status="waiting" aria-label="等待中 列"></div>
+              </div>
+            </div>
+            <div class="column" data-status="someday">
+              <div class="bg-white border border-slate-200 rounded-xl h-full flex flex-col">
+                <div class="px-3 py-2 border-b border-slate-200 flex items-center justify-between">
+                  <div class="font-medium">也許/將來</div>
+                  <div class="text-xs text-slate-500" id="count-someday">0</div>
+                </div>
+                <div class="flex-1 p-2 min-h-40 space-y-2 droptarget" data-status="someday" aria-label="也許/將來 列"></div>
+              </div>
+            </div>
+            <div class="column" data-status="completed">
+              <div class="bg-white border border-slate-200 rounded-xl h-full flex flex-col">
+                <div class="px-3 py-2 border-b border-slate-200 flex items-center justify-between">
+                  <div class="font-medium">已完成</div>
+                  <div class="text-xs text-slate-500" id="count-completed">0</div>
+                </div>
+                <div class="flex-1 p-2 min-h-40 space-y-2 droptarget" data-status="completed" aria-label="已完成 列"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Projects View -->
+        <div id="view-projects" class="view hidden">
+          <div class="bg-white border border-slate-200 rounded-xl p-4">
+            <div class="flex items-center justify-between">
+              <h2 class="font-semibold">專案列表</h2>
+              <div class="flex items-center gap-2">
+                <input id="newProjectInput" type="text" placeholder="新增專案名稱"
+                       class="px-3 py-2 border border-slate-300 rounded-lg" />
+                <button id="addProjectBtn" class="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">新增專案</button>
+              </div>
+            </div>
+            <div id="projectsContainer" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+          </div>
+        </div>
+
+        <!-- Calendar View -->
+        <div id="view-calendar" class="view hidden">
+          <div class="bg-white border border-slate-200 rounded-xl p-4">
+            <h2 class="font-semibold">日曆（截止與延期）</h2>
+            <p class="text-sm text-slate-600 mt-1">顯示有截止日期（Due）或延期至（Defer to）的項目。</p>
+            <div id="calendarContainer" class="mt-4 space-y-4"></div>
+          </div>
+        </div>
+
+        <!-- Review View -->
+        <div id="view-review" class="view hidden">
+          <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+            <h2 class="font-semibold">週回顧（Weekly Review）</h2>
+            <ol class="list-decimal ml-5 text-sm text-slate-700 space-y-1">
+              <li>收集：把腦中的事、便條、email 等全部倒進 Inbox</li>
+              <li>釐清：逐一判斷是否可行、下一步是什麼、是否委派或延期</li>
+              <li>組織：分配到 下一步行動/等待中/也許 等清單，或設截止/延期</li>
+              <li>檢視：逐一檢查專案，確保每個專案至少有一個下一步</li>
+              <li>執行：依情境/時間/能量/優先度選擇要做的事</li>
+            </ol>
+            <div>
+              <button id="startReviewFlowBtn" class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">開始引導式回顧</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Completed (full list) -->
+        <div id="view-completed" class="view hidden">
+          <div class="bg-white border border-slate-200 rounded-xl p-4">
+            <h2 class="font-semibold">已完成項目</h2>
+            <div id="completedList" class="mt-3 space-y-2"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Clarify/Edit Modal -->
+  <div id="modal" class="fixed inset-0 z-40 hidden">
+    <div class="absolute inset-0 bg-black/30"></div>
+    <div class="relative max-w-3xl mx-auto mt-10 bg-white rounded-xl shadow-xl border border-slate-200">
+      <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+        <div class="font-semibold" id="modalTitle">釐清/編輯</div>
+        <button id="closeModalBtn" class="px-2 py-1 rounded-lg hover:bg-slate-100">關閉</button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="text-sm text-slate-600">標題</label>
+            <input id="f-title" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          </div>
+          <div>
+            <label class="text-sm text-slate-600">專案</label>
+            <div class="flex gap-2">
+              <select id="f-project" class="w-full px-3 py-2 border border-slate-300 rounded-lg"></select>
+              <button id="newProjectQuickBtn" class="px-3 py-2 border border-slate-300 rounded-lg bg-white hover:bg-slate-100">新增</button>
+            </div>
+          </div>
+          <div class="md:col-span-2">
+            <label class="text-sm text-slate-600">備註</label>
+            <textarea id="f-note" rows="3" class="w-full px-3 py-2 border border-slate-300 rounded-lg"></textarea>
+          </div>
+          <div>
+            <label class="text-sm text-slate-600">情境（可複選）</label>
+            <div id="contextsBox" class="flex flex-wrap gap-2 mt-1"></div>
+            <div class="mt-2 flex gap-2">
+              <input id="newContextInput" type="text" placeholder="新增情境，如 @home"
+                     class="flex-1 px-3 py-2 border border-slate-300 rounded-lg" />
+              <button id="addContextBtn" class="px-3 py-2 border border-slate-300 rounded-lg bg-white hover:bg-slate-100">加入</button>
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label class="text-sm text-slate-600">能量</label>
+              <select id="f-energy" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                <option value="">未指定</option>
+                <option value="low">低</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-sm text-slate-600">時間（分）</label>
+              <input id="f-time" type="number" min="0" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="text-sm text-slate-600">截止日期</label>
+              <input id="f-due" type="date" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="text-sm text-slate-600">延期至</label>
+              <input id="f-defer" type="date" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="text-sm text-slate-600">委派給</label>
+              <input id="f-delegate" type="text" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label class="text-sm text-slate-600">狀態</label>
+              <select id="f-status" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                <option value="inbox">Inbox</option>
+                <option value="next">下一步行動</option>
+                <option value="waiting">等待中</option>
+                <option value="someday">也許/將來</option>
+                <option value="completed">已完成</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="border-t border-slate-200 pt-3">
+          <div class="text-sm text-slate-600 mb-2">決策（釐清建議）：</div>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+            <button class="clarify-btn px-2 py-2 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200" data-action="do-now">立刻完成（< 2 分鐘）</button>
+            <button class="clarify-btn px-2 py-2 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200" data-action="next">下一步行動</button>
+            <button class="clarify-btn px-2 py-2 rounded-lg bg-amber-50 text-amber-700 border border-amber-200" data-action="defer">延期/日曆</button>
+            <button class="clarify-btn px-2 py-2 rounded-lg bg-blue-50 text-blue-700 border border-blue-200" data-action="delegate">委派（等待中）</button>
+            <button class="clarify-btn px-2 py-2 rounded-lg bg-slate-50 text-slate-700 border border-slate-200" data-action="someday">也許/將來</button>
+          </div>
+        </div>
+      </div>
+      <div class="px-4 py-3 border-t border-slate-200 flex items-center justify-between">
+        <button id="deleteItemBtn" class="px-3 py-2 rounded-lg text-rose-700 border border-rose-200 bg-rose-50 hover:bg-rose-100">刪除此項</button>
+        <div class="flex items-center gap-2">
+          <button id="saveItemBtn" class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Review Wizard -->
+  <div id="reviewWizard" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/40"></div>
+    <div class="relative max-w-3xl mx-auto mt-10 bg-white rounded-xl shadow-xl border border-slate-200 p-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-semibold">引導式週回顧</h3>
+        <button id="closeReviewWizard" class="px-2 py-1 rounded-lg hover:bg-slate-100">關閉</button>
+      </div>
+      <div id="reviewStepContent" class="mt-3 space-y-2 text-slate-800"></div>
+      <div class="mt-4 flex items-center justify-between">
+        <button id="prevReviewStep" class="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-100">上一步</button>
+        <div class="flex items-center gap-2">
+          <div id="reviewProgress" class="text-sm text-slate-500"></div>
+          <button id="nextReviewStep" class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">下一步</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Templates -->
+  <template id="itemCardTemplate">
+    <div class="item-card group rounded-lg border border-slate-200 bg-white p-3 shadow-sm hover:shadow transition cursor-grab" draggable="true">
+      <div class="flex items-start justify-between gap-2">
+        <div class="min-w-0">
+          <div class="font-medium leading-snug item-title"></div>
+          <div class="text-xs text-slate-500 mt-0.5 item-meta"></div>
+        </div>
+        <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+          <button class="btn-edit text-slate-600 hover:text-indigo-700 px-2 py-1 rounded hover:bg-slate-100 text-sm">編輯</button>
+          <button class="btn-done text-emerald-700 hover:text-emerald-800 px-2 py-1 rounded hover:bg-emerald-50 text-sm">完成</button>
+          <button class="btn-del text-rose-700 hover:text-rose-800 px-2 py-1 rounded hover:bg-rose-50 text-sm">刪除</button>
+        </div>
+      </div>
+      <div class="mt-2 flex flex-wrap gap-1 item-tags"></div>
+    </div>
+  </template>
+
+  <script>
+    // --- Data Model & Storage ---
+    const storageKey = 'gtd_app_data_v1';
+
+    const app = {
+      items: [],      // tasks and projects (isProject flag)
+      contexts: ['@home', '@work', '@computer', '@phone', '@errands'],
+      selectedItemId: null,
+      filters: { context: '', energy: '', time: '' },
+      views: ['board','projects','calendar','review','completed'],
+      currentView: 'board',
+    };
+
+    function uid() {
+      return 'id_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+    }
+
+    function save() {
+      localStorage.setItem(storageKey, JSON.stringify(app));
+    }
+
+    function load() {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          app.items = parsed.items || [];
+          app.contexts = parsed.contexts || app.contexts;
+          app.filters = parsed.filters || app.filters;
+          app.currentView = parsed.currentView || 'board';
+        } catch (e) {
+          console.warn('Load failed, using defaults', e);
+        }
+      }
+    }
+
+    function resetAll() {
+      if (!confirm('確定要清空所有資料嗎？此操作無法復原。')) return;
+      localStorage.removeItem(storageKey);
+      app.items = [];
+      app.contexts = ['@home', '@work', '@computer', '@phone', '@errands'];
+      app.filters = { context: '', energy: '', time: '' };
+      app.currentView = 'board';
+      renderAll();
+      toast('已重置');
+    }
+
+    // --- CRUD ---
+    function addItem(partial) {
+      const item = {
+        id: uid(),
+        title: partial.title?.trim() || '未命名',
+        note: partial.note || '',
+        status: partial.status || 'inbox', // inbox | next | waiting | someday | completed
+        isProject: partial.isProject || false,
+        project: partial.project || '', // project name (string)
+        contexts: partial.contexts || [],
+        energy: partial.energy || '',
+        time: Number(partial.time) || 0,
+        due: partial.due || '',
+        defer: partial.defer || '',
+        delegate: partial.delegate || '',
+        createdAt: new Date().toISOString(),
+        completedAt: '',
+      };
+      app.items.push(item);
+      save();
+      return item;
+    }
+
+    function updateItem(id, updates) {
+      const idx = app.items.findIndex(i => i.id === id);
+      if (idx >= 0) {
+        app.items[idx] = { ...app.items[idx], ...updates };
+        save();
+      }
+    }
+
+    function deleteItem(id) {
+      app.items = app.items.filter(i => i.id !== id);
+      save();
+    }
+
+    function getItem(id) {
+      return app.items.find(i => i.id === id);
+    }
+
+    function getProjects() {
+      return app.items.filter(i => i.isProject);
+    }
+
+    function ensureProjectOption(projectName) {
+      if (!projectName) return;
+      const exists = getProjects().some(p => p.title === projectName);
+      if (!exists) {
+        addItem({ title: projectName, isProject: true, status: 'next' });
+      }
+    }
+
+    // --- Helpers ---
+    function formatDate(str) {
+      if (!str) return '';
+      try { return new Date(str).toLocaleDateString(); } catch { return str; }
+    }
+
+    function isVisibleByFilter(item) {
+      const { context, energy, time } = app.filters;
+      if (context && !item.contexts?.includes(context)) return false;
+      if (energy && item.energy !== energy) return false;
+      if (time) {
+        const t = Number(time);
+        if (!isNaN(t) && (Number(item.time) || 0) > t) return false;
+      }
+      return true;
+    }
+
+    function toast(msg) {
+      const el = document.createElement('div');
+      el.className = 'fixed bottom-4 right-4 bg-slate-900 text-white px-3 py-2 rounded-lg shadow';
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => { el.remove(); }, 2000);
+    }
+
+    // --- Rendering ---
+    function renderFilters() {
+      const ctxSel = document.getElementById('filterContext');
+      ctxSel.innerHTML = '<option value="">情境：全部</option>' + app.contexts.map(c => `<option value="${c}">${c}</option>`).join('');
+      ctxSel.value = app.filters.context || '';
+      document.getElementById('filterEnergy').value = app.filters.energy || '';
+      document.getElementById('filterTime').value = app.filters.time || '';
+    }
+
+    function renderBoard() {
+      const statuses = ['inbox','next','waiting','someday','completed'];
+      const containers = {};
+      statuses.forEach(s => {
+        containers[s] = document.querySelector(`.droptarget[data-status="${s}"]`);
+        containers[s].innerHTML = '';
+      });
+
+      const counts = { inbox:0, next:0, waiting:0, someday:0, completed:0 };
+
+      app.items
+        .filter(i => !i.isProject) // tasks only
+        .forEach(item => {
+          counts[item.status] = (counts[item.status] || 0) + 1;
+          if (!isVisibleByFilter(item)) return;
+
+          const tpl = document.getElementById('itemCardTemplate');
+          const node = tpl.content.firstElementChild.cloneNode(true);
+          node.dataset.id = item.id;
+
+          node.querySelector('.item-title').textContent = item.title;
+
+          const meta = [];
+          if (item.project) meta.push(`專案：${item.project}`);
+          if (item.delegate && item.status === 'waiting') meta.push(`等待：${item.delegate}`);
+          if (item.due) meta.push(`截止：${formatDate(item.due)}`);
+          if (item.defer) meta.push(`延期至：${formatDate(item.defer)}`);
+          node.querySelector('.item-meta').textContent = meta.join(' · ');
+
+          const tags = node.querySelector('.item-tags');
+          item.contexts?.forEach(c => {
+            const b = document.createElement('span');
+            b.className = 'text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200';
+            b.textContent = c;
+            tags.appendChild(b);
+          });
+          if (item.energy) {
+            const b = document.createElement('span');
+            b.className = 'text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200';
+            b.textContent = '能量: ' + (item.energy === 'low' ? '低' : item.energy === 'high' ? '高' : '中');
+            tags.appendChild(b);
+          }
+          if (item.time) {
+            const b = document.createElement('span');
+            b.className = 'text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200';
+            b.textContent = `${item.time} 分`;
+            tags.appendChild(b);
+          }
+
+          // Events
+          node.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', item.id);
+            node.classList.add('opacity-60');
+          });
+          node.addEventListener('dragend', () => node.classList.remove('opacity-60'));
+
+          node.querySelector('.btn-edit').addEventListener('click', () => openModal(item.id));
+          node.querySelector('.btn-done').addEventListener('click', () => {
+            if (item.status === 'completed') return;
+            updateItem(item.id, { status: 'completed', completedAt: new Date().toISOString() });
+            renderAll();
+          });
+          node.querySelector('.btn-del').addEventListener('click', () => {
+            if (!confirm('確定刪除此項？')) return;
+            deleteItem(item.id);
+            renderAll();
+          });
+
+          containers[item.status]?.appendChild(node);
+        });
+
+      document.getElementById('count-inbox').textContent = counts.inbox;
+      document.getElementById('count-next').textContent = counts.next;
+      document.getElementById('count-waiting').textContent = counts.waiting;
+      document.getElementById('count-someday').textContent = counts.someday;
+      document.getElementById('count-completed').textContent = counts.completed;
+
+      // droptarget events
+      document.querySelectorAll('.droptarget').forEach(dt => {
+        dt.addEventListener('dragover', (e) => { e.preventDefault(); dt.classList.add('ring-2','ring-indigo-400'); });
+        dt.addEventListener('dragleave', () => dt.classList.remove('ring-2','ring-indigo-400'));
+        dt.addEventListener('drop', (e) => {
+          e.preventDefault();
+          dt.classList.remove('ring-2','ring-indigo-400');
+          const id = e.dataTransfer.getData('text/plain');
+          const dest = dt.dataset.status;
+          const it = getItem(id);
+          if (!it) return;
+          if (dest === 'completed') {
+            updateItem(id, { status: 'completed', completedAt: new Date().toISOString() });
+          } else {
+            updateItem(id, { status: dest });
+          }
+          renderAll();
+        });
+      });
+    }
+
+    function renderProjects() {
+      // Project selector in modal
+      const projectSelect = document.getElementById('f-project');
+      const projects = getProjects().sort((a, b) => a.title.localeCompare(b.title));
+      projectSelect.innerHTML = '<option value="">（無）</option>' + projects.map(p => `<option value="${p.title}">${p.title}</option>`).join('');
+
+      // Projects view
+      const container = document.getElementById('projectsContainer');
+      container.innerHTML = '';
+      projects.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'border border-slate-200 rounded-xl p-3 bg-white';
+        const actions = app.items.filter(i => !i.isProject && i.project === p.title && i.status !== 'completed');
+
+        card.innerHTML = `
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="font-medium">${p.title}</div>
+              <div class="text-xs text-slate-500">下一步行動：${actions.filter(a => a.status === 'next').length} · 等待中：${actions.filter(a => a.status === 'waiting').length} · 也許：${actions.filter(a => a.status === 'someday').length}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button data-act="add" class="px-2 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-sm">加下一步</button>
+              <button data-act="edit" class="px-2 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-sm">編輯專案</button>
+              <button data-act="del" class="px-2 py-1 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 text-sm">刪除</button>
+            </div>
+          </div>
+          <div class="mt-2 space-y-2"></div>
+        `;
+        const list = card.querySelector('.mt-2');
+        actions.forEach(a => {
+          const row = document.createElement('div');
+          row.className = 'flex items-center justify-between px-2 py-2 rounded-lg border border-slate-200';
+          row.innerHTML = `
+            <div class="min-w-0">
+              <div class="text-sm font-medium truncate">${a.title}</div>
+              <div class="text-xs text-slate-500">${a.status === 'next' ? '下一步' : a.status === 'waiting' ? '等待' : '也許'} ${a.due ? ' · 截止：'+formatDate(a.due) : ''}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button data-act="to-next" data-id="${a.id}" class="text-xs px-2 py-1 rounded border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100">下一步</button>
+              <button data-act="edit-item" data-id="${a.id}" class="text-xs px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100">編輯</button>
+              <button data-act="done" data-id="${a.id}" class="text-xs px-2 py-1 rounded border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100">完成</button>
+            </div>
+          `;
+          list.appendChild(row);
+        });
+
+        // Handlers
+        card.querySelector('[data-act="add"]').addEventListener('click', () => {
+          const item = addItem({ title: '新下一步...', status: 'next', project: p.title });
+          openModal(item.id);
+        });
+        card.querySelector('[data-act="edit"]').addEventListener('click', () => openModal(p.id));
+        card.querySelector('[data-act="del"]').addEventListener('click', () => {
+          if (!confirm('刪除此專案？其下行動不會被刪除。')) return;
+          deleteItem(p.id);
+          renderAll();
+        });
+
+        list.querySelectorAll('button').forEach(btn => {
+          const act = btn.dataset.act;
+          const id = btn.dataset.id;
+          if (act === 'to-next') btn.addEventListener('click', () => { updateItem(id, { status: 'next' }); renderAll(); });
+          if (act === 'edit-item') btn.addEventListener('click', () => openModal(id));
+          if (act === 'done') btn.addEventListener('click', () => { updateItem(id, { status: 'completed', completedAt: new Date().toISOString() }); renderAll(); });
+        });
+
+        container.appendChild(card);
+      });
+
+      if (projects.length === 0) {
+        container.innerHTML = '<div class="text-sm text-slate-600">尚無專案，您可以在上方新增，或在項目編輯中把項目標記為專案。</div>';
+      }
+    }
+
+    function renderCalendar() {
+      const cal = document.getElementById('calendarContainer');
+      cal.innerHTML = '';
+      const dated = app.items.filter(i => !i.isProject && (i.due || i.defer) && i.status !== 'completed');
+      if (!dated.length) {
+        cal.innerHTML = '<div class="text-sm text-slate-600">目前沒有設定截止或延期的項目。</div>';
+        return;
+      }
+      const groups = {};
+      dated.forEach(i => {
+        const keys = [];
+        if (i.defer) keys.push(['延期至', i.defer]);
+        if (i.due) keys.push(['截止', i.due]);
+        keys.forEach(([label, date]) => {
+          const key = date;
+          groups[key] = groups[key] || [];
+          groups[key].push({ item: i, label });
+        });
+      });
+      const dates = Object.keys(groups).sort();
+      dates.forEach(d => {
+        const box = document.createElement('div');
+        box.className = 'border border-slate-200 rounded-xl';
+        box.innerHTML = `
+          <div class="px-3 py-2 border-b border-slate-200 font-medium">${formatDate(d)}</div>
+          <div class="p-3 space-y-2"></div>
+        `;
+        const inner = box.querySelector('.p-3');
+        groups[d].forEach(({ item, label }) => {
+          const row = document.createElement('div');
+          row.className = 'flex items-center justify-between px-2 py-2 rounded-lg border border-slate-200 bg-slate-50';
+          row.innerHTML = `
+            <div class="min-w-0">
+              <div class="text-sm font-medium truncate">${item.title}</div>
+              <div class="text-xs text-slate-600">${label}${item.project ? ' · 專案：'+item.project : ''}${item.contexts?.length ? ' · '+item.contexts.join(', ') : ''}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button data-id="${item.id}" data-act="edit" class="text-xs px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100">編輯</button>
+              <button data-id="${item.id}" data-act="done" class="text-xs px-2 py-1 rounded border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100">完成</button>
+            </div>
+          `;
+          inner.appendChild(row);
+        });
+        inner.querySelectorAll('button').forEach(btn => {
+          const id = btn.dataset.id;
+          const act = btn.dataset.act;
+          if (act === 'edit') btn.addEventListener('click', () => openModal(id));
+          if (act === 'done') btn.addEventListener('click', () => { updateItem(id, { status: 'completed', completedAt: new Date().toISOString() }); renderAll(); });
+        });
+        cal.appendChild(box);
+      });
+    }
+
+    function renderCompleted() {
+      const list = document.getElementById('completedList');
+      list.innerHTML = '';
+      const done = app.items.filter(i => !i.isProject && i.status === 'completed').sort((a,b) => (b.completedAt||'').localeCompare(a.completedAt||''));
+      if (!done.length) {
+        list.innerHTML = '<div class="text-sm text-slate-600">尚無已完成項目。</div>';
+        return;
+      }
+      done.forEach(i => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200';
+        row.innerHTML = `
+          <div class="min-w-0">
+            <div class="text-sm font-medium truncate">${i.title}</div>
+            <div class="text-xs text-slate-500">完成於：${i.completedAt ? new Date(i.completedAt).toLocaleString() : ''}${i.project ? ' · 專案：'+i.project : ''}</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button data-id="${i.id}" data-act="restore" class="text-xs px-2 py-1 rounded border border-slate-300 bg-white hover:bg-slate-100">復原</button>
+            <button data-id="${i.id}" data-act="del" class="text-xs px-2 py-1 rounded border border-rose-200 text-rose-700 bg-rose-50 hover:bg-rose-100">刪除</button>
+          </div>
+        `;
+        list.appendChild(row);
+      });
+      list.querySelectorAll('button').forEach(btn => {
+        const id = btn.dataset.id;
+        const act = btn.dataset.act;
+        if (act === 'restore') btn.addEventListener('click', () => { updateItem(id, { status: 'next', completedAt: '' }); renderAll(); });
+        if (act === 'del') btn.addEventListener('click', () => { if (confirm('刪除此完成項目？')) { deleteItem(id); renderAll(); } });
+      });
+    }
+
+    function renderViews() {
+      app.views.forEach(v => {
+        document.getElementById(`view-${v}`).classList.toggle('hidden', app.currentView !== v);
+      });
+      // highlight nav
+      document.querySelectorAll('.nav-btn').forEach(b => {
+        const active = b.dataset.view === app.currentView;
+        b.classList.toggle('bg-indigo-50', active);
+        b.classList.toggle('text-indigo-700', active);
+        b.classList.toggle('border', active);
+        b.classList.toggle('border-indigo-200', active);
+      });
+    }
+
+    function renderContextsInModal(selected = []) {
+      const box = document.getElementById('contextsBox');
+      box.innerHTML = '';
+      app.contexts.forEach(ctx => {
+        const id = 'ctx-' + ctx.slice(1);
+        const w = document.createElement('label');
+        w.className = 'inline-flex items-center gap-1 border border-slate-200 rounded px-2 py-1 bg-slate-50';
+        w.innerHTML = `<input type="checkbox" value="${ctx}" class="ctx-check"> <span class="text-sm">${ctx}</span>`;
+        const input = w.querySelector('input');
+        input.checked = selected.includes(ctx);
+        box.appendChild(w);
+      });
+    }
+
+    function openModal(itemId) {
+      const item = getItem(itemId);
+      if (!item) return;
+      app.selectedItemId = itemId;
+      document.getElementById('modalTitle').textContent = item.isProject ? '編輯專案' : '釐清/編輯項目';
+      document.getElementById('f-title').value = item.title || '';
+      document.getElementById('f-note').value = item.note || '';
+      renderProjects(); // ensure project list updated
+      document.getElementById('f-project').value = item.project || '';
+      renderContextsInModal(item.contexts || []);
+      document.getElementById('f-energy').value = item.energy || '';
+      document.getElementById('f-time').value = item.time || 0;
+      document.getElementById('f-due').value = item.due || '';
+      document.getElementById('f-defer').value = item.defer || '';
+      document.getElementById('f-delegate').value = item.delegate || '';
+      document.getElementById('f-status').value = item.status || 'inbox';
+      document.getElementById('deleteItemBtn').classList.toggle('hidden', !!item.isProject);
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      app.selectedItemId = null;
+      document.getElementById('modal').classList.add('hidden');
+    }
+
+    function collectModalData() {
+      const title = document.getElementById('f-title').value.trim();
+      const note = document.getElementById('f-note').value.trim();
+      const project = document.getElementById('f-project').value;
+      const energy = document.getElementById('f-energy').value;
+      const time = Number(document.getElementById('f-time').value || 0);
+      const due = document.getElementById('f-due').value;
+      const defer = document.getElementById('f-defer').value;
+      const delegate = document.getElementById('f-delegate').value.trim();
+      const status = document.getElementById('f-status').value;
+      const contexts = Array.from(document.querySelectorAll('#contextsBox .ctx-check:checked')).map(i => i.value);
+      return { title, note, project, energy, time, due, defer, delegate, status, contexts };
+    }
+
+    function renderAll() {
+      renderFilters();
+      renderBoard();
+      renderProjects();
+      renderCalendar();
+      renderCompleted();
+      renderViews();
+      save();
+    }
+
+    // --- Review Flow ---
+    const reviewSteps = [
+      {
+        title: '收集（Capture）',
+        content: `
+          <p>把腦中的一切未盡事宜都丟進 Inbox。只管收集，不要評價。</p>
+          <ul class="list-disc ml-5 text-sm text-slate-700">
+            <li>使用上方「快速收集」輸入框，連續輸入，按 Enter。</li>
+            <li>把紙本、email 代辦等都轉成項目。</li>
+          </ul>
+        `,
+        onEnter() { app.currentView = 'board'; renderViews(); }
+      },
+      {
+        title: '釐清（Clarify）',
+        content: `
+          <p>逐一點開 Inbox 項目，判斷是否可行：</p>
+          <ul class="list-disc ml-5 text-sm text-slate-700">
+            <li>若 < 2 分鐘，點「立刻完成」</li>
+            <li>若需他人處理，選「委派（等待中）」並填寫委派對象</li>
+            <li>若需要安排，設定「截止」或「延期至」</li>
+            <li>不需要行動的，刪除或移至「也許/將來」</li>
+          </ul>
+        `,
+        onEnter() { app.currentView = 'board'; renderViews(); }
+      },
+      {
+        title: '組織（Organize）',
+        content: `
+          <p>將項目分配到合適清單，並連結到專案。</p>
+          <ul class="list-disc ml-5 text-sm text-slate-700">
+            <li>把多步驟成果設為「專案」，並確保至少有一個下一步行動</li>
+            <li>為行動加上「情境」「能量」「時間」以便執行</li>
+          </ul>
+        `,
+        onEnter() { app.currentView = 'projects'; renderViews(); }
+      },
+      {
+        title: '檢視（Reflect）',
+        content: `
+          <p>檢查每個專案，補上缺少的下一步；檢查等待中的項目與日曆項目。</p>
+          <ul class="list-disc ml-5 text-sm text-slate-700">
+            <li>專案頁面：逐一檢視</li>
+            <li>日曆頁面：留意即將到期與延期項目</li>
+          </ul>
+        `,
+        onEnter() { app.currentView = 'calendar'; renderViews(); }
+      },
+      {
+        title: '執行（Engage）',
+        content: `
+          <p>回到看板，依「情境/時間/能量」套用篩選，挑選最適合當下的下一步。</p>
+          <ul class="list-disc ml-5 text-sm text-slate-700">
+            <li>套用篩選器（右上角）</li>
+            <li>完成後拖放或按「完成」</li>
+          </ul>
+        `,
+        onEnter() { app.currentView = 'board'; renderViews(); }
+      },
+    ];
+    let reviewIndex = 0;
+
+    function openReviewWizard() {
+      reviewIndex = 0;
+      document.getElementById('reviewWizard').classList.remove('hidden');
+      renderReviewStep();
+    }
+    function closeReviewWizard() {
+      document.getElementById('reviewWizard').classList.add('hidden');
+    }
+    function renderReviewStep() {
+      const step = reviewSteps[reviewIndex];
+      const wrap = document.getElementById('reviewStepContent');
+      wrap.innerHTML = `<div class="font-medium">${step.title}</div>${step.content}`;
+      document.getElementById('reviewProgress').textContent = `${reviewIndex+1} / ${reviewSteps.length}`;
+      step.onEnter?.();
+      document.getElementById('prevReviewStep').disabled = reviewIndex === 0;
+      document.getElementById('nextReviewStep').textContent = reviewIndex === reviewSteps.length - 1 ? '完成' : '下一步';
+    }
+
+    // --- Event Bindings ---
+    document.addEventListener('DOMContentLoaded', () => {
+      load();
+      // initial render and minimal seed
+      if (!app.items.length) {
+        // Seed a sample project and actions to demonstrate
+        const p = addItem({ title: '打造 GTD 系統', isProject: true, status: 'next' });
+        addItem({ title: '設定情境清單', status: 'next', project: p.title, contexts: ['@computer'], time: 15, energy: 'low' });
+        addItem({ title: '蒐集所有未盡事宜', status: 'inbox' });
+        addItem({ title: '安排牙醫預約', status: 'someday', contexts: ['@phone'], time: 5 });
+      }
+      renderAll();
+
+      // Nav
+      document.querySelectorAll('.nav-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          app.currentView = b.dataset.view;
+          renderAll();
+        });
+      });
+
+      // Quick capture
+      const quickForm = document.getElementById('quickCaptureForm');
+      quickForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('quickCaptureInput');
+        const val = input.value.trim();
+        if (!val) return;
+        const item = addItem({ title: val, status: 'inbox' });
+        input.value = '';
+        renderAll();
+        // Optionally auto-open clarify
+        openModal(item.id);
+      });
+
+      // Filters
+      document.getElementById('filterContext').addEventListener('change', (e) => { app.filters.context = e.target.value; renderAll(); });
+      document.getElementById('filterEnergy').addEventListener('change', (e) => { app.filters.energy = e.target.value; renderAll(); });
+      document.getElementById('filterTime').addEventListener('change', (e) => { app.filters.time = e.target.value; renderAll(); });
+      document.getElementById('clearFiltersBtn').addEventListener('click', () => {
+        app.filters = { context: '', energy: '', time: '' };
+        renderAll();
+      });
+
+      // Reset
+      document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+      // Export/Import
+      document.getElementById('exportBtn').addEventListener('click', () => {
+        const data = JSON.stringify(app, null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'gtd-export.json'; a.click();
+        URL.revokeObjectURL(url);
+      });
+      document.getElementById('importInput').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const text = await file.text();
+        try {
+          const data = JSON.parse(text);
+          if (!data.items || !Array.isArray(data.items)) throw new Error('格式不正確');
+          app.items = data.items;
+          app.contexts = data.contexts || app.contexts;
+          app.filters = data.filters || app.filters;
+          app.currentView = data.currentView || 'board';
+          save();
+          renderAll();
+          toast('匯入成功');
+        } catch (err) {
+          alert('匯入失敗：' + err.message);
+        } finally {
+          e.target.value = '';
+        }
+      });
+
+      // Modal actions
+      document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+      document.getElementById('deleteItemBtn').addEventListener('click', () => {
+        if (!app.selectedItemId) return;
+        if (!confirm('確定刪除此項？')) return;
+        deleteItem(app.selectedItemId);
+        closeModal();
+        renderAll();
+      });
+      document.getElementById('saveItemBtn').addEventListener('click', () => {
+        const id = app.selectedItemId;
+        if (!id) return;
+        const item = getItem(id);
+        if (!item) return;
+        const data = collectModalData();
+        // If project changed to a new one, auto-create
+        ensureProjectOption(data.project);
+        updateItem(id, { ...data });
+        closeModal();
+        renderAll();
+        toast('已保存');
+      });
+      document.getElementById('newProjectQuickBtn').addEventListener('click', () => {
+        const name = prompt('新專案名稱：');
+        if (!name) return;
+        ensureProjectOption(name.trim());
+        renderProjects();
+        document.getElementById('f-project').value = name.trim();
+      });
+      document.getElementById('addContextBtn').addEventListener('click', () => {
+        const input = document.getElementById('newContextInput');
+        const val = input.value.trim();
+        if (!val) return;
+        if (!val.startsWith('@')) {
+          alert('情境建議以 @ 開頭，例如 @home');
+          return;
+        }
+        if (!app.contexts.includes(val)) {
+          app.contexts.push(val);
+          renderContextsInModal(Array.from(document.querySelectorAll('#contextsBox .ctx-check:checked')).map(i => i.value));
+          input.value = '';
+          save();
+        }
+      });
+
+      // Clarify quick buttons
+      document.querySelectorAll('.clarify-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (!app.selectedItemId) return;
+          const id = app.selectedItemId;
+          const item = getItem(id);
+          const data = collectModalData();
+          ensureProjectOption(data.project);
+
+          const action = btn.dataset.action;
+          if (action === 'do-now') {
+            updateItem(id, { ...data, status: 'completed', completedAt: new Date().toISOString() });
+            toast('已完成（<2 分鐘）');
+          }
+          if (action === 'next') {
+            updateItem(id, { ...data, status: 'next' });
+            toast('已移至 下一步行動');
+          }
+          if (action === 'defer') {
+            if (!data.defer && !data.due) {
+              alert('請設定「延期至」或「截止」日期');
+              return;
+            }
+            updateItem(id, { ...data, status: 'next' });
+            toast('已設定日期/延期');
+          }
+          if (action === 'delegate') {
+            if (!data.delegate) {
+              alert('請填寫「委派給」對象');
+              return;
+            }
+            updateItem(id, { ...data, status: 'waiting' });
+            toast('已移至 等待中');
+          }
+          if (action === 'someday') {
+            updateItem(id, { ...data, status: 'someday' });
+            toast('已移至 也許/將來');
+          }
+          closeModal();
+          renderAll();
+        });
+      });
+
+      // Review view
+      document.getElementById('startReviewBtn').addEventListener('click', () => {
+        app.currentView = 'review';
+        renderAll();
+        openReviewWizard();
+      });
+      document.getElementById('startReviewFlowBtn').addEventListener('click', openReviewWizard);
+      document.getElementById('closeReviewWizard').addEventListener('click', closeReviewWizard);
+      document.getElementById('prevReviewStep').addEventListener('click', () => {
+        if (reviewIndex > 0) { reviewIndex--; renderReviewStep(); }
+      });
+      document.getElementById('nextReviewStep').addEventListener('click', () => {
+        if (reviewIndex < reviewSteps.length - 1) {
+          reviewIndex++; renderReviewStep();
+        } else {
+          closeReviewWizard();
+          toast('週回顧完成');
+        }
+      });
+    });
+  </script>
+<script>window.parent.postMessage({ action: "ready" }, "*"); 
+ 
+window.console = new Proxy(console, {
+  get(target, prop) {
+    if (['log', 'warn', 'error'].includes(prop)) {
+      return new Proxy(target[prop], {
+        apply(fn, thisArg, args) {
+          fn.apply(thisArg, args);
+          window.parent.postMessage({ action: 'console', 
+            type: prop, 
+            args: args.map((arg) => {
+              try {
+                return JSON.stringify(arg).replace(/^["']|["']$/g, '');
+              } catch (e) {
+                return arg;
+              }
+            }) 
+          }, '*');
+        }
+      });
+    }
+    return target[prop];
+  }
+});
+</script></body>
+</html>

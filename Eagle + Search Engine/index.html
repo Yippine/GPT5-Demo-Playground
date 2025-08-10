@@ -1,0 +1,1025 @@
+
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>Eagle 風格圖片收集管理（單檔）+ 類 Google 搜尋</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Tailwind CDN (for rapid UI) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* 自訂滾動條與細節 */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 5px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .thumb { transition: transform .08s ease; }
+    .thumb:hover { transform: translateY(-2px); }
+    .tag { background: #eef2ff; color:#3730a3; }
+    .kbd { background: #111827; color:#f9fafb; border-radius: 4px; padding: 0 6px; font-size: 12px; }
+    .chip { border:1px solid #e5e7eb; border-radius:9999px; padding:2px 10px; }
+    .dot { width:12px; height:12px; border-radius:9999px; display:inline-block; border:1px solid rgba(0,0,0,.08) }
+    .badge { background:#f1f5f9; border:1px solid #e2e8f0; color:#0f172a; border-radius:6px; padding:2px 8px; }
+    .rating-star { color:#f59e0b; }
+    .context { white-space: pre-wrap; }
+    .btn { @apply px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50; }
+    .btn-primary { @apply px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700; }
+    .btn-danger { @apply px-3 py-1.5 rounded-md bg-rose-600 text-white hover:bg-rose-700; }
+    .input { @apply border border-slate-300 rounded-md px-3 py-2 w-full; }
+    .input-ghost { @apply border border-transparent rounded-md px-3 py-2 w-full bg-slate-50; }
+    .card { @apply rounded-lg border border-slate-200 bg-white; }
+    .menu-item:hover { @apply bg-slate-100; }
+    .grid-auto { display:grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap:12px; }
+    .sidebar { width: 280px; }
+    .drawer { width: 320px; }
+    .mask { background: rgba(0,0,0,.42); }
+    .hidden-input { display:none !important; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div class="flex h-screen">
+    <!-- Sidebar -->
+    <aside class="sidebar h-full border-r border-slate-200 bg-white flex flex-col">
+      <div class="p-3 border-b border-slate-200">
+        <div class="flex items-center justify-between">
+          <div class="font-semibold">資料庫</div>
+          <div class="text-xs text-slate-500">本地 IndexedDB</div>
+        </div>
+        <div class="mt-2 flex gap-2">
+          <button id="importBtn" class="btn">匯入圖片</button>
+          <input id="filePicker" type="file" accept="image/*" multiple class="hidden-input" />
+          <button id="dedupBtn" class="btn">重複檢測</button>
+        </div>
+      </div>
+
+      <div class="p-3 border-b border-slate-200">
+        <div class="text-sm font-medium mb-2">資料夾</div>
+        <div id="folderList" class="space-y-1 max-h-60 overflow-auto pr-1"></div>
+        <div class="mt-2 flex gap-2">
+          <input id="newFolderName" class="input" placeholder="新增資料夾名稱" />
+          <button id="addFolderBtn" class="btn">新增</button>
+        </div>
+      </div>
+
+      <div class="p-3 border-b border-slate-200">
+        <div class="text-sm font-medium mb-2">智能資料夾（儲存查詢）</div>
+        <div id="smartList" class="space-y-1 max-h-60 overflow-auto pr-1"></div>
+        <div class="mt-2 flex gap-2">
+          <input id="newSmartName" class="input" placeholder="名稱" />
+          <input id="newSmartQuery" class="input" placeholder="查詢語法" />
+          <button id="addSmartBtn" class="btn">儲存</button>
+        </div>
+      </div>
+
+      <div class="p-3">
+        <div class="text-sm font-medium mb-2">快速過濾</div>
+        <div class="flex flex-wrap gap-2">
+          <button data-q='type:png' class="chip">PNG</button>
+          <button data-q='type:jpg OR type:jpeg' class="chip">JPG</button>
+          <button data-q='type:gif' class="chip">GIF</button>
+          <button data-q='rating:>=4' class="chip">評分≥4</button>
+          <button data-q='has:tag' class="chip">有標籤</button>
+          <button data-q='color:blue' class="chip"><span class="dot" style="background:#3b82f6"></span> Blue</button>
+          <button data-q='color:red' class="chip"><span class="dot" style="background:#ef4444"></span> Red</button>
+          <button data-q='dup:near' class="chip">可能重複</button>
+        </div>
+      </div>
+      <div class="mt-auto p-3 text-xs text-slate-500">
+        小技巧：點擊上方查詢欄按 ? 查看運算子用法
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 flex flex-col min-w-0">
+      <!-- Top bar -->
+      <div class="p-3 border-b border-slate-200 bg-white flex items-center gap-2">
+        <input id="searchInput" class="input" placeholder='搜尋（支援運算子：tag:#靈感 color:blue rating:>=3 type:png -folder:"垃圾桶" OR "山景"）' />
+        <button id="searchHelpBtn" class="btn" title="搜尋說明">?</button>
+        <button id="clearSearchBtn" class="btn">清除</button>
+        <div class="ml-auto flex items-center gap-2">
+          <button id="exportDbBtn" class="btn">匯出資料庫</button>
+          <button id="importDbBtn" class="btn">匯入資料庫</button>
+          <input id="dbFilePicker" type="file" accept="application/json" class="hidden-input" />
+        </div>
+      </div>
+
+      <!-- Content -->
+      <div class="flex-1 overflow-hidden flex">
+        <!-- Grid -->
+        <div class="flex-1 overflow-auto p-4">
+          <div id="grid" class="grid-auto"></div>
+          <div id="emptyState" class="hidden text-center text-slate-500 mt-10">
+            拖拉圖片到此處，或點左側「匯入圖片」
+          </div>
+        </div>
+
+        <!-- Drawer: details -->
+        <aside class="drawer h-full border-l border-slate-200 bg-white p-3 flex flex-col">
+          <div class="text-sm font-medium">詳細資訊</div>
+          <div id="detail" class="mt-3 flex-1 overflow-auto">
+            <div class="text-slate-500 text-sm">尚未選取項目</div>
+          </div>
+          <div class="pt-3 border-t border-slate-200">
+            <div class="flex gap-2">
+              <button id="editBtn" class="btn">編輯</button>
+              <button id="saveBtn" class="btn-primary hidden">儲存</button>
+              <button id="cancelBtn" class="btn hidden">取消</button>
+              <button id="deleteBtn" class="btn-danger ml-auto">刪除</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modals -->
+  <div id="helpModal" class="fixed inset-0 hidden items-center justify-center">
+    <div class="mask absolute inset-0"></div>
+    <div class="relative z-10 w-[840px] max-w-[95vw] card p-6 bg-white">
+      <div class="flex items-center justify-between">
+        <div class="text-lg font-semibold">類 Google 搜尋語法（本地庫映射）</div>
+        <button class="btn" onclick="toggleHelp(false)">關閉</button>
+      </div>
+      <div class="mt-4 text-sm leading-6">
+        <p>搜尋支援關鍵字與運算子，預設 AND，支援 OR、- 排除、"精確短語"、括號 ( )、大於/小於（如 rating:>=3）。靈感源自 Google 搜尋的精確與運算子體驗，並映射到本地欄位與屬性。</p>
+        <ul class="list-disc pl-6 mt-3">
+          <li>關鍵字：匹配名稱或備註，如 山景</li>
+          <li>"精確短語"：如 "夜景 燈光"</li>
+          <li>OR：如 山景 OR 海景</li>
+          <li>- 排除：如 -tag:#棄用 -folder:"垃圾桶"</li>
+          <li>tag: 或 #：如 tag:#靈感 #UI/UX</li>
+          <li>folder:：如 folder:"產品/海報"</li>
+          <li>type:/ext:：如 type:png ext:svg</li>
+          <li>rating:：如 rating:>=4、rating:=5</li>
+          <li>width:/height:：如 width:>1000 height:<800</li>
+          <li>size:：如 size:<2MB、size:>300KB</li>
+          <li>date: 或 added: 範圍：date:2024-01..2024-06</li>
+          <li>color: 名稱或 hex：color:blue color:#aabbcc</li>
+          <li>has:tag / has:note / has:palette</li>
+          <li>dup:near（視覺近似，aHash 演算法）</li>
+        </ul>
+        <div class="mt-3">
+          你也可以儲存查詢成「智能資料夾」，隨時點擊即動態套用
+        </div>
+        <div class="mt-3 text-xs text-slate-500">
+          註：本工具不連網，僅針對你本地匯入的圖片做上述查詢與篩選
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed left-1/2 -translate-x-1/2 top-6 z-50 hidden">
+    <div class="px-4 py-2 rounded-md bg-slate-900 text-white shadow">訊息</div>
+  </div>
+
+  <script>
+  // ====== 資料庫（IndexedDB） ======
+  const DB_NAME = 'eagle-lite-db';
+  const DB_VERSION = 1;
+  let db;
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = (e) => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('items')) {
+          const s = db.createObjectStore('items', { keyPath: 'id', autoIncrement: true });
+          s.createIndex('folderId', 'folderId', { unique: false });
+          s.createIndex('addedAt', 'addedAt', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('folders')) {
+          db.createObjectStore('folders', { keyPath: 'id', autoIncrement: true });
+        }
+        if (!db.objectStoreNames.contains('smart')) {
+          db.createObjectStore('smart', { keyPath: 'id', autoIncrement: true });
+        }
+        if (!db.objectStoreNames.contains('blobs')) {
+          db.createObjectStore('blobs', { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = () => { db = req.result; resolve(db); };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function tx(storeNames, mode = 'readonly') {
+    const t = db.transaction(storeNames, mode);
+    const stores = storeNames.map(n => t.objectStore(n));
+    return { t, stores };
+  }
+
+  // ====== 工具 ======
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+  function toast(msg) {
+    const node = $('#toast');
+    node.firstElementChild.textContent = msg;
+    node.classList.remove('hidden');
+    setTimeout(() => node.classList.add('hidden'), 1800);
+  }
+  function bytesToSize(bytes) {
+    if (bytes < 1024) return bytes + 'B';
+    const i = Math.floor(Math.log(bytes)/Math.log(1024));
+    const sizes = ['B','KB','MB','GB','TB'];
+    return (bytes/Math.pow(1024,i)).toFixed(1) + sizes[i];
+  }
+  function parseSizeExpr(v) {
+    const m = v.toLowerCase().match(/^([<>]=?|=)?\s*([\d.]+)\s*(b|kb|mb|gb)?$/);
+    if (!m) return null;
+    const op = m[1] || '=';
+    const num = parseFloat(m[2]);
+    const unit = (m[3]||'b').toUpperCase();
+    const factor = {B:1, KB:1024, MB:1024**2, GB:1024**3}[unit];
+    return { op, value: num*factor };
+  }
+  function dateToISO(d) {
+    const pad = (n) => String(n).padStart(2,'0');
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+  }
+  function hex(n){ return ('0'+n.toString(16)).slice(-2); }
+  function rgbToHex(r,g,b){ return '#' + hex(r)+hex(g)+hex(b); }
+  function hexToRgb(h) {
+    const m = h.replace('#','').match(/^([0-9a-f]{6})$/i);
+    if (!m) return null;
+    const v = m[1];
+    return { r: parseInt(v.slice(0,2),16), g: parseInt(v.slice(2,4),16), b: parseInt(v.slice(4,6),16) };
+  }
+  function colorDistance(a,b){
+    const dr=a.r-b.r, dg=a.g-b.g, db=a.b-b.b;
+    return Math.sqrt(dr*dr + dg*dg + db*db);
+  }
+  const NAMED_COLORS = {
+    red:'#ef4444', orange:'#f97316', yellow:'#f59e0b', green:'#22c55e',
+    teal:'#14b8a6', cyan:'#06b6d4', blue:'#3b82f6', indigo:'#6366f1',
+    purple:'#8b5cf6', pink:'#ec4899', brown:'#a16207', black:'#111827',
+    white:'#f8fafc', gray:'#94a3b8'
+  };
+  function nearestNamed(colorHex) {
+    const rgb = hexToRgb(colorHex); if(!rgb) return 'unknown';
+    let best='unknown', bestD=1e9;
+    for (const [name,hexv] of Object.entries(NAMED_COLORS)) {
+      const d = colorDistance(rgb, hexToRgb(hexv));
+      if (d < bestD) { bestD = d; best = name; }
+    }
+    return best;
+  }
+
+  // aHash 8x8
+  async function aHash(blob) {
+    const bmp = await createImageBitmap(blob);
+    const c = new OffscreenCanvas(8,8);
+    const ctx = c.getContext('2d');
+    ctx.drawImage(bmp, 0,0,8,8);
+    const img = ctx.getImageData(0,0,8,8).data;
+    let gray = [];
+    for (let i=0;i<64;i++){
+      const idx = i*4;
+      const g = (img[idx]*0.299 + img[idx+1]*0.587 + img[idx+2]*0.114);
+      gray.push(g);
+    }
+    const mean = gray.reduce((a,b)=>a+b,0)/64;
+    let bits = 0n;
+    for (let i=0;i<64;i++){
+      bits <<= 1n;
+      if (gray[i] >= mean) bits |= 1n;
+    }
+    return bits.toString(16).padStart(16,'0');
+  }
+  function hamming(a,b) {
+    const x = BigInt('0x'+a) ^ BigInt('0x'+b);
+    let d = 0;
+    let y = x;
+    while (y) { d += Number(y & 1n); y >>= 1n; }
+    return d;
+  }
+
+  // 產縮圖與色盤（簡化：平均色 + 9格色量化）
+  async function thumbAndPalette(blob, maxW=512, maxH=512) {
+    const bmp = await createImageBitmap(blob);
+    const ratio = Math.min(maxW / bmp.width, maxH / bmp.height, 1);
+    const w = Math.round(bmp.width * ratio);
+    const h = Math.round(bmp.height * ratio);
+    const c = new OffscreenCanvas(w, h);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bmp, 0, 0, w, h);
+    const imgData = ctx.getImageData(0,0,w,h).data;
+
+    let sr=0, sg=0, sb=0, count = w*h;
+    const buckets = new Array(3*3*3).fill(0); // 27 色塊
+    function bucketIndex(r,g,b) {
+      const q = (v)=> Math.min(2, Math.floor(v/128)); // 0-127,128-255 -> 0,1,2略粗
+      const bi = q(r)*9 + q(g)*3 + q(b);
+      return bi;
+    }
+    const reps = new Array(27).fill(null).map((_,i)=>{
+      const rr = Math.floor(i/9), gg = Math.floor((i%9)/3), bb = i%3;
+      return {r: rr*127, g: gg*127, b: bb*127};
+    });
+
+    for (let i=0;i<count;i++){
+      const idx=i*4;
+      const r=imgData[idx], g=imgData[idx+1], b=imgData[idx+2];
+      sr+=r; sg+=g; sb+=b;
+      buckets[bucketIndex(r,g,b)]++;
+    }
+    const avg = { r: Math.round(sr/count), g: Math.round(sg/count), b: Math.round(sb/count) };
+    const avgHex = rgbToHex(avg.r, avg.g, avg.b);
+    // 取 top 5 palette
+    const ranked = buckets.map((n,i)=>({i,n})).sort((a,b)=>b.n-a.n).slice(0,5).map(({i})=>{
+      const {r,g,b} = reps[i]; return rgbToHex(r,g,b);
+    });
+    return {
+      thumb: await blobToDataURL(await canvasToBlob(c, 'image/jpeg', 0.82)),
+      palette: Array.from(new Set([avgHex, ...ranked]))
+    };
+  }
+  function canvasToBlob(canvas, type='image/png', quality) {
+    return new Promise(resolve => canvas.convertToBlob ? canvas.convertToBlob({type, quality}).then(resolve)
+      : canvas.toBlob(resolve, type, quality));
+  }
+  function blobToDataURL(blob) {
+    return new Promise((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  // ====== 狀態 ======
+  let state = {
+    items: [],
+    folders: [],
+    smart: [],
+    currentFolder: null, // folderId or null for all
+    selection: null,
+    query: ''
+  };
+
+  // ====== 匯入與儲存 ======
+  async function importFiles(files) {
+    const { t, stores:[itemsStore, foldersStore, smartStore, blobsStore] } = tx(['items','folders','smart','blobs'],'readwrite');
+    let added = 0;
+    for (const f of files) {
+      if (!f.type.startsWith('image/')) continue;
+      const meta = {
+        name: f.name,
+        type: f.type.split('/')[1].toLowerCase(),
+        size: f.size,
+        width: null,
+        height: null,
+        tags: [],
+        rating: 0,
+        note: '',
+        folderId: state.currentFolder,
+        addedAt: Date.now(),
+        createdAt: f.lastModified || Date.now(),
+        palette: [],
+        avgColorName: '',
+        hash: '',
+      };
+      try {
+        // 讀尺寸
+        const bmp = await createImageBitmap(f);
+        meta.width = bmp.width; meta.height = bmp.height;
+        // 縮圖 + 色盤
+        const {thumb, palette} = await thumbAndPalette(f, 512, 512);
+        meta.thumb = thumb;
+        meta.palette = palette;
+        meta.avgColorName = nearestNamed(palette[0]);
+        // aHash
+        meta.hash = await aHash(f);
+        // 存 blob
+        const itemId = await new Promise((resolve, reject) => {
+          const req = itemsStore.add(meta);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+        await new Promise((resolve, reject) => {
+          const req = blobsStore.add({ id: itemId, blob: f });
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+        added++;
+      } catch (e) {
+        console.error('import failed', e);
+      }
+    }
+    await t.done;
+    toast(`匯入完成：${added} 張`);
+    await loadAll();
+  }
+
+  async function loadAll() {
+    const { t, stores:[itemsStore, foldersStore, smartStore] } = tx(['items','folders','smart']);
+    const items = await new Promise((resolve)=> {
+      const req = itemsStore.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+    });
+    const folders = await new Promise((resolve)=> {
+      const req = foldersStore.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+    });
+    const smart = await new Promise((resolve)=> {
+      const req = smartStore.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+    });
+    state.items = items;
+    state.folders = folders;
+    state.smart = smart;
+    render();
+  }
+
+  async function getBlobById(id) {
+    const { stores:[blobsStore] } = tx(['blobs']);
+    return await new Promise((resolve)=> {
+      const req = blobsStore.get(id);
+      req.onsuccess = () => resolve(req.result?.blob || null);
+    });
+  }
+
+  // ====== UI 渲染 ======
+  function render() {
+    renderFolders();
+    renderSmart();
+    renderGrid();
+    renderDetail();
+  }
+
+  function renderFolders() {
+    const wrap = $('#folderList');
+    wrap.innerHTML = '';
+    const allBtn = document.createElement('div');
+    allBtn.className = 'px-2 py-1.5 rounded-md cursor-pointer menu-item flex items-center gap-2';
+    allBtn.innerHTML = `<span class="badge">全部</span><span class="text-xs text-slate-500">${state.items.length}</span>`;
+    allBtn.onclick = () => { state.currentFolder = null; renderGrid(); };
+    wrap.appendChild(allBtn);
+    state.folders.forEach(f => {
+      const node = document.createElement('div');
+      const count = state.items.filter(it=>it.folderId===f.id).length;
+      node.className = 'px-2 py-1.5 rounded-md cursor-pointer menu-item flex items-center gap-2';
+      node.innerHTML = `<span>📁 ${f.name}</span><span class="text-xs text-slate-500">${count}</span>`;
+      node.onclick = () => { state.currentFolder = f.id; renderGrid(); };
+      wrap.appendChild(node);
+    });
+  }
+
+  function renderSmart() {
+    const wrap = $('#smartList');
+    wrap.innerHTML = '';
+    state.smart.forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'px-2 py-1.5 rounded-md cursor-pointer menu-item flex items-center gap-2';
+      row.innerHTML = `<span>🧠 ${s.name}</span>
+        <div class="text-xs text-slate-500 truncate" title="${s.query}">${s.query}</div>
+        <button class="ml-auto text-xs btn" data-id="${s.id}">刪除</button>`;
+      row.onclick = (e) => {
+        if (e.target.tagName === 'BUTTON') return;
+        $('#searchInput').value = s.query;
+        state.query = s.query;
+        renderGrid();
+      };
+      row.querySelector('button').onclick = (e) => { e.stopPropagation(); deleteSmart(s.id); };
+      wrap.appendChild(row);
+    });
+  }
+
+  function renderGrid() {
+    const grid = $('#grid');
+    const empty = $('#emptyState');
+    let items = filterItems();
+    grid.innerHTML = '';
+    if (items.length === 0) {
+      empty.classList.remove('hidden');
+      return;
+    } else empty.classList.add('hidden');
+
+    for (const it of items) {
+      const card = document.createElement('div');
+      card.className = 'card p-2 thumb relative cursor-pointer';
+      card.innerHTML = `
+        <img src="${it.thumb}" alt="${it.name}" class="w-full h-32 object-cover rounded" />
+        <div class="mt-2 text-sm truncate" title="${it.name}">${it.name}</div>
+        <div class="flex items-center gap-1 text-xs text-slate-500">
+          <span>${it.type.toUpperCase()}</span>
+          <span>·</span>
+          <span>${it.width}×${it.height}</span>
+          <span>·</span>
+          <span>${bytesToSize(it.size)}</span>
+        </div>
+        <div class="mt-1 flex gap-1">
+          ${it.tags.slice(0,3).map(t=>`<span class="tag px-2 py-0.5 rounded text-xs">#${t}</span>`).join('')}
+        </div>
+        <div class="absolute right-2 top-2 flex gap-1">
+          ${[...Array(5)].map((_,i)=>`<span class="rating-star">${i<it.rating?'★':'☆'}</span>`).join('')}
+        </div>
+      `;
+      card.onclick = () => { state.selection = it.id; renderDetail(); };
+      grid.appendChild(card);
+    }
+  }
+
+  function detailField(label, value) {
+    return `<div><div class="text-xs text-slate-500">${label}</div><div>${value}</div></div>`;
+  }
+
+  function renderDetail() {
+    const pane = $('#detail');
+    if (!state.selection) {
+      pane.innerHTML = '<div class="text-slate-500 text-sm">尚未選取項目</div>';
+      return;
+    }
+    const it = state.items.find(x=>x.id===state.selection);
+    if (!it) { pane.innerHTML = '<div class="text-slate-500 text-sm">找不到項目</div>'; return; }
+
+    const colorChips = it.palette.map(c=>`<span class="dot" title="${c}" style="background:${c}"></span>`).join(' ');
+    const tags = it.tags.map(t=>`<span class="tag px-2 py-0.5 rounded text-xs">#${t}</span>`).join(' ');
+    pane.innerHTML = `
+      <div class="space-y-3">
+        <img src="${it.thumb}" class="w-full object-contain rounded" />
+        <div class="flex gap-2">
+          ${[...Array(5)].map((_,i)=>`<button class="text-2xl" data-rate="${i+1}">${i<it.rating?'★':'☆'}</button>`).join('')}
+        </div>
+        ${detailField('名稱', `<div>${it.name}</div>`)}
+        ${detailField('格式', it.type.toUpperCase())}
+        ${detailField('尺寸', `${it.width} × ${it.height}`)}
+        ${detailField('大小', bytesToSize(it.size))}
+        ${detailField('資料夾', (state.folders.find(f=>f.id===it.folderId)?.name || '（未指定）'))}
+        ${detailField('加入日期', new Date(it.addedAt).toLocaleString())}
+        ${detailField('建立日期', new Date(it.createdAt).toLocaleString())}
+        ${detailField('色彩', `<div class="flex items-center gap-2">${colorChips}<span class="text-xs text-slate-500">${it.avgColorName}</span></div>`)}
+        <div>
+          <div class="text-xs text-slate-500">標籤</div>
+          <div id="tagsWrap" class="flex flex-wrap gap-1">${tags}</div>
+          <div id="tagsEdit" class="hidden mt-1"><input id="tagsInput" class="input" placeholder="以逗號分隔，如 靈感,海報,字體" /></div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-500">備註</div>
+          <div id="noteView" class="context">${(it.note||'')}</div>
+          <textarea id="noteEdit" class="input hidden" rows="5" placeholder="輸入說明、來源、靈感重點..."></textarea>
+        </div>
+        <div class="flex gap-2">
+          <button id="openBtn" class="btn">原檔預覽</button>
+          <button id="moveBtn" class="btn">移動到資料夾</button>
+        </div>
+      </div>
+    `;
+
+    // 綁定評分
+    pane.querySelectorAll('[data-rate]').forEach(btn=>{
+      btn.onclick = async () => {
+        await updateItem(it.id, { rating: Number(btn.dataset.rate) });
+        renderGrid(); renderDetail();
+      };
+    });
+
+    // 按鈕
+    $('#editBtn').classList.remove('hidden');
+    $('#saveBtn').classList.add('hidden');
+    $('#cancelBtn').classList.add('hidden');
+
+    $('#openBtn').onclick = async () => {
+      const blob = await getBlobById(it.id);
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    };
+
+    $('#moveBtn').onclick = async () => {
+      const name = prompt('移動到資料夾（輸入名稱，若不存在則建立）：', state.folders.find(f=>f.id===it.folderId)?.name||'');
+      if (name==null) return;
+      let folder = state.folders.find(f=>f.name===name);
+      if (!folder) folder = await addFolder(name);
+      await updateItem(it.id, { folderId: folder.id });
+      await loadAll();
+      state.currentFolder = folder.id;
+    };
+
+    $('#deleteBtn').onclick = async () => {
+      if (!confirm('確定刪除？')) return;
+      await deleteItem(it.id);
+      state.selection = null;
+      await loadAll();
+    };
+  }
+
+  // ====== CRUD ======
+  async function addFolder(name) {
+    const { stores:[foldersStore] } = tx(['folders'], 'readwrite');
+    const id = await new Promise((resolve,reject)=>{
+      const req = foldersStore.add({ name });
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error);
+    });
+    await loadAll();
+    return state.folders.find(f=>f.id===id);
+  }
+
+  async function deleteSmart(id) {
+    const { stores:[smartStore] } = tx(['smart'], 'readwrite');
+    await new Promise((resolve)=>{ const req = smartStore.delete(id); req.onsuccess = ()=>resolve(); });
+    await loadAll();
+  }
+
+  async function updateItem(id, patch) {
+    const { stores:[itemsStore] } = tx(['items'], 'readwrite');
+    const it = await new Promise((resolve)=>{ const req = itemsStore.get(id); req.onsuccess=()=>resolve(req.result); });
+    if (!it) return;
+    const next = { ...it, ...patch };
+    await new Promise((resolve)=>{ const req = itemsStore.put(next); req.onsuccess=()=>resolve(); });
+    const idx = state.items.findIndex(x=>x.id===id);
+    if (idx>-1) state.items[idx]=next;
+  }
+
+  async function deleteItem(id) {
+    const { stores:[itemsStore, blobsStore] } = tx(['items','blobs'], 'readwrite');
+    await new Promise((resolve)=>{ const req = itemsStore.delete(id); req.onsuccess=()=>resolve(); });
+    await new Promise((resolve)=>{ const req = blobsStore.delete(id); req.onsuccess=()=>resolve(); });
+    state.items = state.items.filter(x=>x.id!==id);
+  }
+
+  // ====== 搜尋語法解析與過濾 ======
+  // 支援：詞、"詞 組"、OR、-、( )、field:value、比較運算（>= > = < <=）
+  // fields: tag/#, folder, type/ext, rating, width, height, size, date, added, color, has, dup
+  function tokenize(q) {
+    const tokens = [];
+    let i=0;
+    const push = (t,v)=>tokens.push({t,v});
+    while (i<q.length) {
+      const c = q[i];
+      if (/\s/.test(c)) { i++; continue; }
+      if (c === '"') {
+        let j=i+1, buf='';
+        while (j<q.length && q[j]!=='"') { buf+=q[j]; j++; }
+        tokens.push({t:'PHRASE', v:buf});
+        i = (q[j]==='"')? j+1 : j;
+        continue;
+      }
+      if (c==='('){ push('LPAREN','('); i++; continue; }
+      if (c===')'){ push('RPAREN',')'); i++; continue; }
+      if (c==='-'){ push('NOT','-'); i++; continue; }
+      // 讀單詞直到空白或符號
+      let j=i, buf='';
+      while (j<q.length && !/\s|\(|\)|"/.test(q[j])) { buf+=q[j]; j++; }
+      push('WORD', buf);
+      i=j;
+    }
+    return tokens;
+  }
+
+  function parse(q) {
+    const tokens = tokenize(q);
+    let i=0;
+    const peek = ()=>tokens[i];
+    const take = ()=>tokens[i++];
+    function parseFactor() {
+      let tok = peek();
+      if (!tok) return null;
+      if (tok.t==='NOT') { take(); const node = parseFactor(); return {op:'NOT', node}; }
+      if (tok.t==='LPAREN') { take(); const node = parseExpr(); if (peek()?.t==='RPAREN') take(); return node; }
+      if (tok.t==='PHRASE') { take(); return {op:'TERM', v: tok.v, exact:true}; }
+      if (tok.t==='WORD') {
+        take();
+        // field:value or simple term
+        const m = tok.v.match(/^([^:]+):(.*)$/);
+        if (m) {
+          return { op:'FIELD', field: m[1].toLowerCase(), v: m[2] };
+        } else {
+          return { op:'TERM', v: tok.v, exact:false };
+        }
+      }
+      return null;
+    }
+    function parseTermWithNot() {
+      let node = parseFactor();
+      return node;
+    }
+    function parseExpr() {
+      let left = parseTermWithNot();
+      while (i<tokens.length) {
+        const tok = peek();
+        if (!tok) break;
+        // OR 明確，其他默認 AND
+        if (tok.t==='WORD' && tok.v.toUpperCase()==='OR') {
+          take();
+          const right = parseTermWithNot();
+          left = { op:'OR', left, right };
+        } else if (tok.t==='RPAREN') {
+          break;
+        } else {
+          // AND（默認）
+          const right = parseTermWithNot();
+          left = { op:'AND', left, right };
+        }
+      }
+      return left;
+    }
+    return parseExpr();
+  }
+
+  function testItem(item, ast) {
+    if (!ast) return true;
+    switch (ast.op) {
+      case 'AND': return testItem(item, ast.left) && testItem(item, ast.right);
+      case 'OR': return testItem(item, ast.left) || testItem(item, ast.right);
+      case 'NOT': return !testItem(item, ast.node);
+      case 'TERM': {
+        const hay = (item.name + ' ' + (item.note||'')).toLowerCase();
+        if (ast.exact) return hay.includes(ast.v.toLowerCase());
+        return ast.v ? hay.includes(ast.v.toLowerCase()) : true;
+      }
+      case 'FIELD': {
+        return fieldMatch(item, ast.field, ast.v);
+      }
+      default: return true;
+    }
+  }
+
+  function cmpNum(op, a, b) {
+    if (op==='>') return a>b;
+    if (op==='>=') return a>=b;
+    if (op==='<') return a<b;
+    if (op==='<=') return a<=b;
+    return a===b;
+  }
+
+  function parseCmp(v) {
+    const m = v.match(/^(>=|<=|>|<|=)?\s*(.+)$/);
+    return { op: m?.[1] || '=', val: m?.[2] || v };
+  }
+
+  function inDateRange(ms, expr) {
+    // 支援 YYYY-MM-DD..YYYY-MM-DD / YYYY-MM.. / YYYY..
+    const parts = expr.split('..').map(s=>s.trim());
+    function parseDate(s) {
+      const m = s.match(/^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?$/);
+      if (!m) return null;
+      const y=+m[1], mo=+(m[2]||'1')-1, d=+(m[3]||'1');
+      return new Date(y,mo,d).getTime();
+    }
+    if (parts.length===2) {
+      const a = parseDate(parts[0]); const b = parseDate(parts[1]);
+      if (a && b) return ms>=a && ms<= (new Date(new Date(b).getFullYear(), new Date(b).getMonth(), new Date(b).getDate()+1).getTime()-1);
+    }
+    const single = parseDate(expr);
+    if (single) {
+      const start = new Date(new Date(single).getFullYear(), new Date(single).getMonth(), new Date(single).getDate()).getTime();
+      const end = start + 86400000 - 1;
+      return ms>=start && ms<=end;
+    }
+    return false;
+  }
+
+  function fieldMatch(item, field, rawVal) {
+    const v = rawVal;
+    if (field==='tag' || field==='#') {
+      return item.tags.some(t => t.toLowerCase() === v.toLowerCase());
+    }
+    if (field==='has') {
+      if (v==='tag') return item.tags.length>0;
+      if (v==='note') return (item.note||'').trim().length>0;
+      if (v==='palette') return (item.palette||[]).length>0;
+      return false;
+    }
+    if (field==='folder') {
+      const name = (state.folders.find(f=>f.id===item.folderId)?.name || '').toLowerCase();
+      return name.includes(v.toLowerCase());
+    }
+    if (field==='type' || field==='ext') {
+      return item.type.toLowerCase() === v.toLowerCase();
+    }
+    if (field==='rating') {
+      const {op, val} = parseCmp(v);
+      return cmpNum(op, item.rating, Number(val));
+    }
+    if (field==='width' || field==='height') {
+      const {op, val} = parseCmp(v);
+      const n = Number(val);
+      return cmpNum(op, field==='width'?item.width:item.height, n);
+    }
+    if (field==='size') {
+      const expr = parseSizeExpr(v);
+      if (!expr) return false;
+      return cmpNum(expr.op, item.size, expr.value);
+    }
+    if (field==='date' || field==='created') {
+      return inDateRange(item.createdAt, v);
+    }
+    if (field==='added') {
+      return inDateRange(item.addedAt, v);
+    }
+    if (field==='color') {
+      const hex = v.startsWith('#') ? v : NAMED_COLORS[v.toLowerCase()];
+      if (!hex) return false;
+      const target = hexToRgb(hex);
+      let best = 1e9;
+      for (const c of (item.palette||[])) {
+        const d = colorDistance(hexToRgb(c), target);
+        if (d<best) best=d;
+      }
+      return best < 90; // 門檻
+    }
+    if (field==='dup') {
+      // dup:near -> 與集合中任一張距離 <= 8
+      if (v==='near') {
+        return state.items.some(other => other.id!==item.id && other.hash && hamming(item.hash, other.hash) <= 8);
+      }
+      return false;
+    }
+    return false;
+  }
+
+  function filterItems() {
+    let items = state.items;
+    if (state.currentFolder) items = items.filter(it=>it.folderId===state.currentFolder);
+    const q = state.query.trim();
+    if (!q) return items.sort((a,b)=>b.addedAt-a.addedAt);
+    const ast = parse(q);
+    const res = items.filter(it=>testItem(it, ast));
+    return res.sort((a,b)=>b.addedAt-a.addedAt);
+  }
+
+  // ====== 匯入/匯出資料庫（JSON，含縮圖與基本屬性） ======
+  async function exportDB() {
+    const data = {
+      items: state.items,
+      folders: state.folders,
+      smart: state.smart,
+      version: 1,
+      exportedAt: Date.now()
+    };
+    const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'eagle-lite-export.json'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+  }
+
+  async function importDB(file) {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data || !Array.isArray(data.items)) { toast('匯入格式錯誤'); return; }
+    const { stores:[itemsStore, foldersStore, smartStore] } = tx(['items','folders','smart'],'readwrite');
+    await Promise.all([
+      new Promise((resolve)=>{ const req = itemsStore.clear(); req.onsuccess=()=>resolve(); }),
+      new Promise((resolve)=>{ const req = foldersStore.clear(); req.onsuccess=()=>resolve(); }),
+      new Promise((resolve)=>{ const req = smartStore.clear(); req.onsuccess=()=>resolve(); })
+    ]);
+    for (const f of data.folders||[]) {
+      await new Promise((resolve)=>{ const req = foldersStore.add(f); req.onsuccess=()=>resolve(); });
+    }
+    for (const s of data.smart||[]) {
+      await new Promise((resolve)=>{ const req = smartStore.add(s); req.onsuccess=()=>resolve(); });
+    }
+    for (const it of data.items||[]) {
+      await new Promise((resolve)=>{ const req = itemsStore.add(it); req.onsuccess=()=>resolve(); });
+    }
+    await loadAll();
+    toast('資料庫匯入完成');
+  }
+
+  // ====== 事件與初始化 ======
+  // 拖放匯入
+  const gridEl = $('#grid').parentElement;
+  ;['dragenter','dragover'].forEach(ev=>{
+    gridEl.addEventListener(ev, (e)=>{ e.preventDefault(); gridEl.classList.add('ring-2','ring-blue-400'); });
+  });
+  ;['dragleave','drop'].forEach(ev=>{
+    gridEl.addEventListener(ev, (e)=>{ e.preventDefault(); gridEl.classList.remove('ring-2','ring-blue-400'); });
+  });
+  gridEl.addEventListener('drop', (e)=>{
+    const files = e.dataTransfer.files;
+    importFiles(files);
+  });
+
+  // 控制列
+  $('#importBtn').onclick = ()=> $('#filePicker').click();
+  $('#filePicker').onchange = (e)=> importFiles(e.target.files);
+  $('#dedupBtn').onclick = ()=> { $('#searchInput').value='dup:near'; state.query='dup:near'; renderGrid(); };
+  $('#clearSearchBtn').onclick = ()=> { $('#searchInput').value=''; state.query=''; renderGrid(); };
+  $('#searchHelpBtn').onclick = ()=> toggleHelp(true);
+  $('#exportDbBtn').onclick = exportDB;
+  $('#importDbBtn').onclick = ()=> $('#dbFilePicker').click();
+  $('#dbFilePicker').onchange = (e)=> e.target.files[0] && importDB(e.target.files[0]);
+
+  // 側邊 chips
+  $$('#sidebar button.chip, .sidebar .chip').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const q = btn.getAttribute('data-q');
+      $('#searchInput').value = q;
+      state.query = q; renderGrid();
+    });
+  });
+
+  // 搜尋即時
+  $('#searchInput').addEventListener('keydown', (e)=>{
+    if (e.key==='Enter') {
+      state.query = e.target.value;
+      renderGrid();
+    }
+    // 快捷鍵：Ctrl/Cmd+K 聚焦
+  });
+  document.addEventListener('keydown', (e)=>{
+    if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='k') {
+      e.preventDefault();
+      $('#searchInput').focus();
+    }
+    if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s') {
+      e.preventDefault();
+      if (!state.selection) return;
+      if (!$('#saveBtn').classList.contains('hidden')) saveEdit();
+    }
+    if (e.key==='?') toggleHelp(true);
+  });
+
+  // 新增資料夾
+  $('#addFolderBtn').onclick = async () => {
+    const name = $('#newFolderName').value.trim();
+    if (!name) return;
+    await addFolder(name);
+    $('#newFolderName').value='';
+  };
+
+  // 儲存智能資料夾
+  $('#addSmartBtn').onclick = async () => {
+    const name = $('#newSmartName').value.trim();
+    const query = $('#newSmartQuery').value.trim();
+    if (!name || !query) return;
+    const { stores:[smartStore] } = tx(['smart'], 'readwrite');
+    await new Promise((resolve)=>{ const req = smartStore.add({ name, query }); req.onsuccess=()=>resolve(); });
+    $('#newSmartName').value=''; $('#newSmartQuery').value='';
+    await loadAll();
+  };
+
+  // 編輯模式
+  $('#editBtn').onclick = () => {
+    if (!state.selection) return;
+    $('#editBtn').classList.add('hidden');
+    $('#saveBtn').classList.remove('hidden');
+    $('#cancelBtn').classList.remove('hidden');
+    $('#noteView').classList.add('hidden');
+    $('#noteEdit').classList.remove('hidden');
+    $('#tagsEdit').classList.remove('hidden');
+    const it = state.items.find(x=>x.id===state.selection);
+    $('#noteEdit').value = it.note || '';
+    $('#tagsInput').value = it.tags.join(',');
+  };
+  $('#cancelBtn').onclick = () => {
+    $('#editBtn').classList.remove('hidden');
+    $('#saveBtn').classList.add('hidden');
+    $('#cancelBtn').classList.add('hidden');
+    $('#noteView').classList.remove('hidden');
+    $('#noteEdit').classList.add('hidden');
+    $('#tagsEdit').classList.add('hidden');
+  };
+  async function saveEdit() {
+    const note = $('#noteEdit').value;
+    const tags = $('#tagsInput').value.split(',').map(s=>s.trim()).filter(Boolean);
+    await updateItem(state.selection, { note, tags });
+    $('#editBtn').classList.remove('hidden');
+    $('#saveBtn').classList.add('hidden');
+    $('#cancelBtn').classList.add('hidden');
+    $('#noteView').classList.remove('hidden');
+    $('#noteEdit').classList.add('hidden');
+    $('#tagsEdit').classList.add('hidden');
+    renderGrid(); renderDetail();
+    toast('已儲存');
+  }
+  $('#saveBtn').onclick = saveEdit;
+
+  function toggleHelp(show) {
+    $('#helpModal').classList.toggle('hidden', !show);
+    if (show) $('#helpModal').classList.add('flex');
+    else $('#helpModal').classList.remove('flex');
+  }
+
+  // 啟動
+  openDB().then(loadAll);
+  </script>
+<script>window.parent.postMessage({ action: "ready" }, "*"); 
+ 
+window.console = new Proxy(console, {
+  get(target, prop) {
+    if (['log', 'warn', 'error'].includes(prop)) {
+      return new Proxy(target[prop], {
+        apply(fn, thisArg, args) {
+          fn.apply(thisArg, args);
+          window.parent.postMessage({ action: 'console', 
+            type: prop, 
+            args: args.map((arg) => {
+              try {
+                return JSON.stringify(arg).replace(/^["']|["']$/g, '');
+              } catch (e) {
+                return arg;
+              }
+            }) 
+          }, '*');
+        }
+      });
+    }
+    return target[prop];
+  }
+});
+</script></body>
+</html>

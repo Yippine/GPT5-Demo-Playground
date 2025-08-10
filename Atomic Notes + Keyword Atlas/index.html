@@ -1,0 +1,1176 @@
+
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>原子筆記 × 關鍵字網狀圖譜（Pro 單檔版）</title>
+  <meta name="description" content="單一 HTML：撰寫原子筆記、Markdown/雙鏈、同義詞合併、關聯圖譜、社群上色/群集篩選。可選 IndexedDB，資料本地儲存。" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+  <style>
+    .chip { display:inline-flex; align-items:center; border-radius:9999px; background:#F1F5F9; color:#334155; padding:.25rem .5rem; font-size:.75rem; margin:.25rem .5rem .25rem 0 }
+    .btn { display:inline-flex; align-items:center; justify-content:center; border-radius:.375rem; background:#2563EB; color:#fff; padding:.5rem .75rem; font-size:.875rem }
+    .btn:hover { background:#1D4ED8 }
+    .btn-secondary { display:inline-flex; align-items:center; justify-content:center; border-radius:.375rem; background:#F1F5F9; color:#0F172A; padding:.5rem .75rem; font-size:.875rem }
+    .btn-secondary:hover { background:#E2E8F0 }
+    .btn-danger { display:inline-flex; align-items:center; justify-content:center; border-radius:.375rem; background:#DC2626; color:#fff; padding:.5rem .75rem; font-size:.875rem }
+    .btn-danger:hover { background:#B91C1C }
+    .field { display:block; width:100%; border-radius:.375rem; border:1px solid #CBD5E1; padding:.5rem .75rem; font-size:.875rem; outline:none }
+    .field:focus { box-shadow:0 0 0 2px rgba(37,99,235,.4); border-color:#93C5FD }
+    .label { display:block; font-size:.875rem; font-weight:500; color:#334155; margin-bottom:.25rem }
+    .card { border:1px solid #E2E8F0; border-radius:.5rem; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.02) }
+    .card-header { padding:.75rem 1rem; border-bottom:1px solid #E2E8F0; display:flex; align-items:center; justify-content:space-between }
+    .card-body { padding:1rem }
+    .tooltip { position:absolute; pointer-events:none; background:rgba(17,24,39,.92); color:#fff; padding:6px 8px; border-radius:.375rem; font-size:12px; z-index:50; transform:translate(-50%,-120%); white-space:nowrap }
+    .prose { line-height:1.6 }
+    .prose h1,.prose h2,.prose h3 { font-weight:700; color:#0F172A; margin-top:.75rem }
+    .prose pre, .prose code { background:#F8FAFC; border:1px solid #E2E8F0; border-radius:.375rem; padding:.125rem .25rem }
+    .pill { border-radius:9999px; padding:.125rem .5rem; font-size:.75rem; }
+    .kbd { font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; border:1px solid #CBD5E1; border-bottom-width:2px; background:#F8FAFC; padding:0 .25rem; border-radius:.25rem; font-size:.75rem }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900">
+  <header class="border-b border-slate-200 bg-white">
+    <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-md bg-blue-600 text-white flex items-center justify-center font-bold">A</div>
+        <div>
+          <h1 class="text-lg font-semibold">原子筆記 × 關鍵字網狀圖譜（Pro）</h1>
+          <p class="text-xs text-slate-500">Markdown/雙鏈 • 同義詞合併 • 社群上色/群集篩選 • 本地儲存</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="exportBtn" class="btn-secondary" title="匯出 JSON">匯出</button>
+        <label class="btn-secondary cursor-pointer" title="匯入 JSON">
+          匯入
+          <input id="importInput" type="file" accept="application/json" class="hidden" />
+        </label>
+        <button id="settingsBtn" class="btn-secondary" title="設定與偏好">設定</button>
+        <button id="resetAllBtn" class="btn-danger" title="清空所有資料">清空</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-4">
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <!-- 左側：編輯器 + 清單 -->
+      <section class="lg:col-span-2 space-y-4">
+        <!-- 編輯器 -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="font-semibold">筆記編輯器</h2>
+            <div class="text-xs text-slate-500">原子筆記：每則僅一個觀念。支援 Markdown 與 [[雙鏈]]。</div>
+          </div>
+          <div class="card-body space-y-4">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="label" for="titleInput">標題</label>
+                <input id="titleInput" class="field" type="text" placeholder="例如：什麼是原子筆記？" />
+              </div>
+              <div class="flex items-end">
+                <div class="ml-auto flex items-center gap-2">
+                  <label class="text-sm text-slate-600 flex items-center gap-1">
+                    <input id="livePreviewToggle" type="checkbox" class="h-4 w-4" checked />
+                    即時預覽
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="label" for="contentInput">內容（支援 #標籤 及 [[雙鏈]]）</label>
+                <textarea id="contentInput" class="field h-56" placeholder="撰寫筆記內容。示例：使用 #標籤 與 [[相關筆記標題]] 建立連結。"></textarea>
+                <div class="mt-2 flex flex-wrap" id="liveTags"></div>
+              </div>
+              <div>
+                <label class="label">預覽</label>
+                <div id="mdPreview" class="field h-56 overflow-auto prose bg-white"></div>
+              </div>
+            </div>
+
+            <div>
+              <div class="label">自動擷取關鍵字（即時預覽）</div>
+              <div id="liveKeywords" class="flex flex-wrap"></div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button id="saveBtn" class="btn">儲存筆記</button>
+              <button id="clearBtn" class="btn-secondary">清除表單</button>
+            </div>
+
+            <div class="text-xs text-slate-500 space-y-1">
+              <div>小技巧：</div>
+              <ul class="list-disc pl-5">
+                <li>用 #標籤 定義主題；用 [[雙鏈]] 串接筆記（支援 [[標題|顯示名]]）。</li>
+                <li>一則筆記聚焦一個想法，利於重組與關聯。</li>
+                <li>系統以 TF-IDF 擷取關鍵字；同義詞會合併計算。</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- 清單 -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="font-semibold">筆記清單</h2>
+            <div class="flex items-center gap-2">
+              <input id="searchNotes" class="field h-8" placeholder="搜尋標題/內容/標籤/雙鏈" />
+            </div>
+          </div>
+          <div class="card-body">
+            <ul id="notesList" class="space-y-2"></ul>
+            <div id="noNotesHint" class="text-sm text-slate-500 hidden">
+              尚無資料。建立第一則原子筆記，右側圖譜會即時顯示概念網路。
+            </div>
+          </div>
+        </div>
+
+        <!-- 設定 -->
+        <div id="settingsCard" class="card hidden">
+          <div class="card-header">
+            <h2 class="font-semibold">設定與偏好</h2>
+            <div class="text-xs text-slate-500">同義詞合併 • 儲存方式 • 其他選項</div>
+          </div>
+          <div class="card-body space-y-4">
+            <div>
+              <label class="label" for="synonymsInput">字詞同義/別名（每行一組）：</label>
+              <textarea id="synonymsInput" class="field h-28" placeholder="示例：&#10;人工智慧 = AI, A.I.&#10;自然語言處理 = NLP, 自然語言"></textarea>
+              <div class="text-xs text-slate-500 mt-1">規則：左側為「主詞（規範名）」；右側以逗號分隔別名。計算關聯與關鍵字時將自動合併。</div>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <label class="text-sm flex items-center gap-2">
+                <input id="useIDB" type="checkbox" class="h-4 w-4" />
+                使用 IndexedDB（大量筆記建議）
+              </label>
+              <button id="applySettingsBtn" class="btn-secondary">套用設定</button>
+              <button id="migrateToIDBBtn" class="btn-secondary hidden">將現有資料遷移至 IndexedDB</button>
+            </div>
+
+            <div class="text-xs text-slate-500">
+              注意：單檔模式無法提供 PWA 安裝（Service Worker 需獨立檔案）。若需要 PWA，我可提供多檔部署版本。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 右側：圖譜 + 控制 + 詳情 -->
+      <section class="lg:col-span-3 space-y-4">
+        <!-- 圖譜與控制 -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="font-semibold">關鍵字網狀圖譜</h2>
+            <div class="text-xs text-slate-500">節點：藍=筆記、綠=關鍵字；點擊節點可查看詳情與雙鏈。</div>
+          </div>
+          <div class="card-body">
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+              <div class="flex items-center gap-2">
+                <label class="text-sm">顯示關鍵字數量</label>
+                <input id="kwCount" type="range" min="10" max="150" value="60" />
+                <span id="kwCountVal" class="text-sm text-slate-600">60</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="text-sm">連結強度下限</label>
+                <input id="linkThresh" type="range" min="0" max="100" value="10" />
+                <span id="linkThreshVal" class="text-sm text-slate-600">0.10</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <input id="showKwKw" type="checkbox" class="h-4 w-4" />
+                <label for="showKwKw" class="text-sm">顯示關鍵字之間連結（共現）</label>
+              </div>
+              <div class="flex items-center gap-2">
+                <input id="colorCommunities" type="checkbox" class="h-4 w-4" />
+                <label for="colorCommunities" class="text-sm">社群上色</label>
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="text-sm">群集篩選</label>
+                <select id="communityFilter" class="field h-8 w-44">
+                  <option value="all">全部</option>
+                </select>
+              </div>
+              <button id="rebuildBtn" class="btn-secondary">重建圖譜</button>
+              <button id="centerBtn" class="btn-secondary">置中/重置縮放</button>
+            </div>
+
+            <div class="h-96 w-full border border-slate-200 rounded-md bg-white relative" id="graphWrap">
+              <svg id="graph" class="w-full h-full"></svg>
+              <div id="tooltip" class="tooltip hidden"></div>
+            </div>
+
+            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="font-semibold text-sm">節點詳情</h3>
+                </div>
+                <div class="card-body text-sm space-y-2" id="detailsPanel">
+                  點擊節點以顯示節點資訊、雙鏈、反向連結與快捷操作。
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="font-semibold text-sm">快速說明</h3>
+                </div>
+                <div class="card-body text-sm space-y-2">
+                  <p>演算法：混合詞規則 + TF-IDF（英文單字；中日韓 2–3 字 N-gram）；支援同義詞合併。</p>
+                  <p>雙鏈：在內容用 [[標題]] 或 [[標題|顯示名]] 建立雙向連結；點擊預覽中的連結可開啟或建立筆記。</p>
+                  <p>社群上色：採用 Label Propagation（近似 Louvain），以顏色標示社群，並可依群集篩選。</p>
+                  <p>儲存：預設 localStorage；可於「設定」啟用 IndexedDB 以因應大量筆記；資料皆保留在本機。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="mx-auto max-w-7xl px-4 py-6 text-xs text-slate-500">
+    單檔應用示範。建議以「原子化」、「可連結」、「可重組」原則撰寫，持續優化你的知識圖譜。
+  </footer>
+
+  <script>
+    // ========= 工具 =========
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+    const debounce = (fn, wait=250) => { let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a), wait)} };
+
+    // ========= 停用詞（簡） =========
+    const EN_STOP = new Set(["the","a","an","and","or","but","if","then","else","when","while","to","of","in","on","for","with","as","by","is","are","was","were","be","being","been","it","its","this","that","these","those","from","at","into","about","over","after","before","between","within","without","also","can","could","should","would","may","might","do","does","did","done","not","no","yes","you","your","we","our","they","their","i","me","my"]);
+    const ZH_STOP_FRAG = new Set(["的","了","嗎","呢","啊","哦","是","在","與","及","和","或","而","於","對","把","被","並","之","以","不","無","有","很","也","都","還","又","及其","以及"]);
+
+    // ========= 儲存（localStorage + 可選 IndexedDB） =========
+    const LS_KEY = "atomic-notes-pro-v1";
+    const PREF_KEY = "atomic-notes-pro-prefs";
+    const DB_NAME = "atomic-notes-pro-db";
+    let useIDB = false; // 偏好控制
+    let idbReady = false;
+
+    let state = {
+      notes: [],              // {id, title, content, createdAt, updatedAt}
+      selectedId: null,
+      nextId: 1,
+      synonymsText: ""        // 使用者定義的同義詞設定
+    };
+
+    const loadPrefs = () => {
+      try {
+        const raw = localStorage.getItem(PREF_KEY);
+        if (raw) {
+          const p = JSON.parse(raw);
+          useIDB = !!p.useIDB;
+          state.synonymsText = p.synonymsText || "";
+        }
+      } catch(e){ console.warn("loadPrefs error", e); }
+      $('#useIDB').checked = useIDB;
+      $('#synonymsInput').value = state.synonymsText || "";
+      $('#migrateToIDBBtn').classList.toggle('hidden', !useIDB);
+    };
+    const savePrefs = () => {
+      localStorage.setItem(PREF_KEY, JSON.stringify({ useIDB, synonymsText: state.synonymsText || "" }));
+      $('#migrateToIDBBtn').classList.toggle('hidden', !useIDB);
+    };
+
+    const loadStateLS = () => {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (raw) {
+          const obj = JSON.parse(raw);
+          state.notes = obj.notes || [];
+          state.selectedId = obj.selectedId || null;
+          state.nextId = obj.nextId || (state.notes.reduce((m,n)=>Math.max(m, n.id||0), 0) + 1);
+        }
+      } catch(e){ console.warn("loadStateLS error", e); }
+    };
+    const saveStateLS = () => {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        notes: state.notes,
+        selectedId: state.selectedId,
+        nextId: state.nextId
+      }));
+    };
+
+    // ---- IndexedDB（極簡封裝） ----
+    const idb = {
+      db: null,
+      async init(){
+        return new Promise((resolve, reject) => {
+          const req = indexedDB.open(DB_NAME, 1);
+          req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('notes')) {
+              const store = db.createObjectStore('notes', { keyPath: 'id' });
+              store.createIndex('updatedAt', 'updatedAt', { unique: false });
+            }
+          };
+          req.onsuccess = () => { this.db = req.result; idbReady = true; resolve(); };
+          req.onerror = () => reject(req.error);
+        });
+      },
+      async getAll(){
+        return new Promise((resolve, reject) => {
+          const tx = this.db.transaction('notes', 'readonly');
+          const st = tx.objectStore('notes');
+          const req = st.getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => reject(req.error);
+        });
+      },
+      async put(note){
+        return new Promise((resolve, reject) => {
+          const tx = this.db.transaction('notes', 'readwrite');
+          const st = tx.objectStore('notes');
+          const req = st.put(note);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      },
+      async delete(id){
+        return new Promise((resolve, reject) => {
+          const tx = this.db.transaction('notes', 'readwrite');
+          const st = tx.objectStore('notes');
+          const req = st.delete(id);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      },
+      async clear(){
+        return new Promise((resolve, reject) => {
+          const tx = this.db.transaction('notes', 'readwrite');
+          const st = tx.objectStore('notes');
+          const req = st.clear();
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      }
+    };
+
+    // 儲存入口：總是更新 localStorage；若 useIDB 則同步至 IndexedDB
+    async function persistAll() {
+      saveStateLS();
+      if (useIDB && idbReady) {
+        // 批次覆蓋（簡化）
+        await idb.clear();
+        for (const n of state.notes) await idb.put(n);
+      }
+    }
+    async function persistNote(note) {
+      saveStateLS();
+      if (useIDB && idbReady) await idb.put(note);
+    }
+    async function removeNote(id) {
+      saveStateLS();
+      if (useIDB && idbReady) await idb.delete(id);
+    }
+
+    // ========= 文字處理 / 同義詞 =========
+    // 使用者同義詞設定：解析為 alias -> canonical
+    let aliasMap = new Map();
+    function parseSynonyms(text) {
+      const map = new Map();
+      (text || "").split(/\r?\n/).forEach(line => {
+        line = line.trim();
+        if (!line || line.startsWith("#")) return;
+        const m = line.split("=");
+        if (m.length < 1) return;
+        const left = (m[0] || "").trim();
+        const right = (m[1] || "").trim();
+        if (!left) return;
+        const canonical = normalizeToken(left);
+        if (right) {
+          right.split(",").forEach(a => {
+            const alias = normalizeToken(a.trim());
+            if (alias) map.set(alias, canonical);
+          });
+        }
+        // 自身也指向自己（容錯）
+        map.set(canonical, canonical);
+      });
+      return map;
+    }
+    const normalizeToken = (t) => (t || "")
+      .toLowerCase()
+      .replace(/\s+/g, "")
+      .replace(/[Ａ-Ｚａ-ｚ０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 65248)); // 全形轉半形
+
+    function applyAlias(tokens) {
+      if (!aliasMap || aliasMap.size === 0) return tokens;
+      return tokens.map(tok => aliasMap.get(normalizeToken(tok)) || tok);
+    }
+
+    const extractTags = (text) => {
+      const tags = new Set();
+      const re = /#([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9_\-]{0,30})/gu;
+      let m; while ((m = re.exec(text)) !== null) tags.add(m[1].toLowerCase());
+      return Array.from(tags);
+    };
+    const extractWikiLinks = (text) => {
+      // 支援 [[Title]] 與 [[Title|Alias]]
+      const links = [];
+      const re = /\[\[([^[\]|]+)(?:\|([^[\]|]+))?\]\]/g;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        links.push({ target: m[1].trim(), label: (m[2] || m[1]).trim() });
+      }
+      return links;
+    };
+    const splitLatinWords = (text) => (text.toLowerCase().match(/[a-z0-9]+/g) || [])
+      .filter(w => w.length >= 3 && !EN_STOP.has(w));
+    const extractCJKSequences = (text) => (text.match(/[\p{Script=Han}]{2,}/gu) || []);
+    const cjkNgrams = (seq, minN=2, maxN=3) => {
+      const grams = [];
+      for (let n=minN; n<=maxN; n++){
+        for (let i=0; i<=seq.length-n; i++){
+          const g = seq.slice(i, i+n);
+          if (![...g].every(ch => ZH_STOP_FRAG.has(ch))) grams.push(g);
+        }
+      }
+      return grams;
+    };
+
+    const tokenize = (text, title="") => {
+      const tags = extractTags(text + " " + title);
+      const stripped = (text + " " + title)
+        .replace(/#[\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9_\-]{0,30}/gu, " ")
+        .replace(/\[\[[^[\]|]+(?:\|[^[\]|]+)?\]\]/g, " "); // 去除雙鏈符號
+      const latin = splitLatinWords(stripped);
+      const cjkSeqs = extractCJKSequences(stripped);
+      const cjkTokens = [];
+      cjkSeqs.forEach(seq => cjkTokens.push(...cjkNgrams(seq)));
+      let terms = [...latin, ...cjkTokens];
+      // 同義詞合併
+      terms = applyAlias(terms);
+      const mergedTags = applyAlias(tags);
+      return { tags: mergedTags, terms };
+    };
+
+    // TF-IDF
+    const computeTfIdf = (notes, topN=10) => {
+      const docs = notes.map(n => {
+        const { tags, terms } = tokenize(n.content, n.title);
+        const allTokens = [...terms, ...tags.map(t => t.toLowerCase())];
+        const tf = new Map();
+        allTokens.forEach(tok => tf.set(tok, (tf.get(tok)||0)+1));
+        const total = Array.from(tf.values()).reduce((a,b)=>a+b,0) || 1;
+        return { id: n.id, tf, total, tags };
+      });
+      const df = new Map();
+      docs.forEach(d => {
+        const uniq = new Set(d.tf.keys());
+        uniq.forEach(tok => df.set(tok, (df.get(tok)||0)+1));
+      });
+      const N = docs.length || 1;
+      const idf = (tok) => Math.log((N + 1) / ((df.get(tok)||0) + 1)) + 1;
+      const noteKeywords = new Map();
+      docs.forEach(d => {
+        const scores = [];
+        d.tf.forEach((cnt, tok) => {
+          const tf = cnt / d.total;
+          let score = tf * idf(tok);
+          if (d.tags.includes(tok)) score *= 1.5;
+          scores.push({ token: tok, score });
+        });
+        scores.sort((a,b)=>b.score - a.score);
+        noteKeywords.set(d.id, scores.slice(0, topN));
+      });
+      return { noteKeywords, df, N };
+    };
+
+    // ========= Wikilink 解析/渲染 =========
+    function renderMarkdownWithWiki(mdText) {
+      // 將 [[Title|Alias]] 轉為 <a href="wikilink:Title" data-wiki="Title">Alias</a>
+      const replaced = (mdText || "").replace(/\[\[([^[\]|]+)(?:\|([^[\]|]+))?\]\]/g, (m, t, a) => {
+        const title = (t || "").trim();
+        const label = (a || t || "").trim();
+        return `[${label}](wikilink:${encodeURIComponent(title)})`;
+      });
+      const html = marked.parse(replaced, { mangle: false, headerIds: false });
+      return DOMPurify.sanitize(html);
+    }
+    function handleWikiClick(e) {
+      const a = e.target.closest('a[href^="wikilink:"]');
+      if (!a) return;
+      e.preventDefault();
+      const title = decodeURIComponent(a.getAttribute('href').slice('wikilink:'.length));
+      openOrCreateByTitle(title);
+    }
+
+    function openOrCreateByTitle(title) {
+      const t = title.trim();
+      let note = state.notes.find(n => (n.title || "").trim().toLowerCase() === t.toLowerCase());
+      if (note) {
+        editNote(note.id);
+      } else {
+        if (confirm(`尚未存在「${t}」。要建立新筆記嗎？`)) {
+          const now = Date.now();
+          note = { id: state.nextId++, title: t, content: "", createdAt: now, updatedAt: now };
+          state.notes.unshift(note);
+          persistNote(note);
+          renderNotesList();
+          rebuildGraph();
+          editNote(note.id);
+        }
+      }
+    }
+
+    // ========= 連結圖譜構建 =========
+    // nodes: {id, label, type: 'note'|'kw', size, community?}
+    // links: {source, target, weight}
+    let currentGraph = { nodes: [], links: [] };
+
+    const getKwCount = () => parseInt($('#kwCount').value, 10);
+    const getLinkThresh = () => parseInt($('#linkThresh').value, 10) / 100;
+
+    function buildGraph(notes) {
+      const { noteKeywords, df, N } = computeTfIdf(notes, 12);
+
+      // 彙整 KW 權重
+      const kwAgg = new Map();
+      notes.forEach(n => (noteKeywords.get(n.id) || []).forEach(({token, score}) => kwAgg.set(token, (kwAgg.get(token)||0)+score)));
+      const sortedKw = Array.from(kwAgg.entries()).sort((a,b)=>b[1]-a[1]).slice(0, getKwCount());
+      const kwSet = new Set(sortedKw.map(([t]) => t));
+
+      const nodes = [];
+      const links = [];
+
+      const noteIdToNodeId = (id) => `note-${id}`;
+      const kwId = (tok) => `kw-${tok}`;
+
+      // 筆記節點
+      notes.forEach(n => nodes.push({
+        id: noteIdToNodeId(n.id),
+        label: n.title || `筆記 ${n.id}`,
+        type: 'note',
+        rawId: n.id,
+        size: 12 + Math.min(16, (noteKeywords.get(n.id)?.length || 0))
+      }));
+
+      // 關鍵字節點
+      sortedKw.forEach(([tok]) => {
+        const idfScore = Math.log((N + 1) / ((df.get(tok) || 0) + 1)) + 1;
+        nodes.push({
+          id: kwId(tok),
+          label: tok,
+          type: 'kw',
+          size: Math.max(8, Math.min(26, 6 + idfScore * 6)),
+          df: df.get(tok) || 0
+        });
+      });
+
+      // 筆記-關鍵字
+      notes.forEach(n => {
+        const nodeId = noteIdToNodeId(n.id);
+        (noteKeywords.get(n.id) || []).forEach(({token, score}) => {
+          if (!kwSet.has(token)) return;
+          const weight = score;
+          if (weight < getLinkThresh()) return;
+          links.push({ source: nodeId, target: kwId(token), weight });
+        });
+      });
+
+      // KW-KW 共現
+      if ($('#showKwKw').checked) {
+        const co = new Map();
+        notes.forEach(n => {
+          const kws = (noteKeywords.get(n.id) || []).map(k=>k.token).filter(t => kwSet.has(t));
+          for (let i=0;i<kws.length;i++){
+            for (let j=i+1;j<kws.length;j++){
+              const a = kws[i], b = kws[j];
+              const key = a < b ? `${a}|||${b}` : `${b}|||${a}`;
+              co.set(key, (co.get(key)||0)+1);
+            }
+          }
+        });
+        const entries = Array.from(co.entries());
+        entries.forEach(([pair, c]) => {
+          const [a,b] = pair.split('|||');
+          const w = c / N;
+          if (w < getLinkThresh()) return;
+          links.push({ source: kwId(a), target: kwId(b), weight: w });
+        });
+      }
+
+      return { nodes, links };
+    }
+
+    // ========= 社群偵測（Label Propagation） =========
+    function detectCommunitiesLPA(graph, maxIter=20) {
+      // 初始化每個節點獨立社群
+      const label = new Map(graph.nodes.map(n => [n.id, n.id]));
+      const neighbors = new Map();
+      graph.nodes.forEach(n => neighbors.set(n.id, []));
+      graph.links.forEach(l => {
+        const s = (typeof l.source === 'string') ? l.source : l.source.id;
+        const t = (typeof l.target === 'string') ? l.target : l.target.id;
+        neighbors.get(s).push({ id: t, w: l.weight || 1 });
+        neighbors.get(t).push({ id: s, w: l.weight || 1 });
+      });
+
+      let changed = true; let iter = 0;
+      while (changed && iter < maxIter) {
+        changed = false; iter++;
+        // 隨機順序更新
+        const order = [...graph.nodes.map(n=>n.id)];
+        for (let i=order.length-1; i>0; i--) {
+          const j = Math.floor(Math.random()*(i+1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
+        order.forEach(id => {
+          const neigh = neighbors.get(id);
+          if (!neigh || neigh.length === 0) return;
+          // 統計鄰居標籤（加權）
+          const count = new Map();
+          neigh.forEach(nb => {
+            const l = label.get(nb.id);
+            count.set(l, (count.get(l) || 0) + (nb.w || 1));
+          });
+          // 選最大權重的標籤
+          let best = null, bestW = -Infinity;
+          count.forEach((w, l) => { if (w > bestW) { bestW = w; best = l; } });
+          if (best && best !== label.get(id)) { label.set(id, best); changed = true; }
+        });
+      }
+      // 重新編號 0..k-1
+      const uniq = Array.from(new Set(label.values()));
+      const idMap = new Map(uniq.map((l,i)=>[l,i]));
+      const result = new Map();
+      label.forEach((v,k)=> result.set(k, idMap.get(v)));
+      return result; // nodeId -> communityIndex
+    }
+
+    // ========= D3 視覺化 =========
+    let sim = null, svg = null, gLinks = null, gNodes = null, zoomG = null;
+    const palette = ["#2563EB","#10B981","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#84CC16","#F472B6","#14B8A6","#EAB308","#EC4899","#0EA5E9","#22C55E","#A855F7"];
+    function setupGraph() {
+      svg = d3.select('#graph'); svg.selectAll("*").remove();
+      zoomG = svg.append('g');
+      gLinks = zoomG.append('g').attr('stroke', '#CBD5E1').attr('stroke-opacity', 0.8).selectAll('line');
+      gNodes = zoomG.append('g').selectAll('g');
+      svg.call(d3.zoom().scaleExtent([0.2, 3]).on('zoom', (e) => zoomG.attr('transform', e.transform)));
+      centerZoom();
+    }
+    function centerZoom() {
+      const wrap = $('#graphWrap'); const { width, height } = wrap.getBoundingClientRect();
+      svg.attr('viewBox', [0, 0, width, height].join(' '));
+      svg.attr('preserveAspectRatio', 'xMidYMid meet');
+    }
+    function renderGraph(graph) {
+      currentGraph = graph;
+
+      // 社群上色
+      let communities = null;
+      if ($('#colorCommunities').checked) {
+        const map = detectCommunitiesLPA(graph);
+        communities = map;
+        graph.nodes.forEach(n => n.community = map.get(n.id) ?? 0);
+        // 填充 communityFilter
+        const counts = new Map();
+        graph.nodes.forEach(n => counts.set(n.community, (counts.get(n.community)||0)+1));
+        const sel = $('#communityFilter');
+        const cur = sel.value;
+        sel.innerHTML = `<option value="all">全部</option>` + Array.from(counts.entries()).sort((a,b)=>b[1]-a[1]).map(([c, cnt]) => `<option value="${c}">群集 ${c}（${cnt}）</option>`).join('');
+        if (cur && cur !== 'all') sel.value = cur;
+      } else {
+        $('#communityFilter').innerHTML = `<option value="all">全部</option>`;
+      }
+
+      // 篩選社群
+      const filterVal = $('#communityFilter').value;
+      let nodes = graph.nodes;
+      let links = graph.links;
+      if (filterVal !== 'all') {
+        const keep = new Set(graph.nodes.filter(n => (n.community+'') === filterVal).map(n => n.id));
+        nodes = graph.nodes.filter(n => keep.has(n.id));
+        links = graph.links.filter(l => {
+          const s = (typeof l.source === 'string') ? l.source : l.source.id;
+          const t = (typeof l.target === 'string') ? l.target : l.target.id;
+          return keep.has(s) && keep.has(t);
+        });
+      }
+
+      // links
+      gLinks = gLinks.data(links, d => `${d.source.id || d.source}-${d.target.id || d.target}`);
+      gLinks.exit().remove();
+      const linksEnter = gLinks.enter().append('line').attr('stroke-width', d => 1 + Math.min(5, d.weight * 8));
+      gLinks = linksEnter.merge(gLinks);
+
+      // nodes
+      gNodes = gNodes.data(nodes, d => d.id);
+      gNodes.exit().remove();
+      const nodesEnter = gNodes.enter().append('g')
+        .call(drag(sim))
+        .on('click', (_, d) => onNodeClick(d))
+        .on('mouseover', onMouseOverNode)
+        .on('mouseout', onMouseOutNode);
+
+      nodesEnter.append('circle')
+        .attr('r', d => d.size)
+        .attr('fill', d => {
+          if ($('#colorCommunities').checked && d.community != null) {
+            return palette[d.community % palette.length];
+          }
+          return d.type === 'note' ? '#2563EB' : '#10B981';
+        })
+        .attr('fill-opacity', 0.88)
+        .attr('stroke', '#1F2937')
+        .attr('stroke-width', 0.5);
+
+      nodesEnter.append('text')
+        .text(d => d.label)
+        .attr('x', d => d.size + 4)
+        .attr('y', '0.35em')
+        .attr('font-size', '10px')
+        .attr('fill', '#334155');
+
+      gNodes = nodesEnter.merge(gNodes);
+
+      // 更新既有節點顏色（社群切換時）
+      gNodes.select('circle')
+        .attr('fill', d => {
+          if ($('#colorCommunities').checked && d.community != null) return palette[d.community % palette.length];
+          return d.type === 'note' ? '#2563EB' : '#10B981';
+        });
+
+      if (sim) sim.stop();
+      sim = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(links).id(d => d.id).distance(d => 40 + (80 / Math.max(1, d.weight))).strength(0.15))
+        .force('charge', d3.forceManyBody().strength(-230))
+        .force('center', d3.forceCenter($('#graphWrap').clientWidth / 2, $('#graphWrap').clientHeight / 2))
+        .force('collision', d3.forceCollide().radius(d => d.size + 4))
+        .on('tick', () => {
+          gLinks.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+          gNodes.attr('transform', d => `translate(${d.x},${d.y})`);
+        });
+    }
+    const drag = (simulation) => d3.drag()
+      .on('start', (e,d) => { if (!e.active) simulation.alphaTarget(0.25).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (e,d) => { d.fx = e.x; d.fy = e.y; })
+      .on('end',  (e,d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; });
+
+    function highlightNeighbors(node) {
+      const neighborIds = new Set([node.id]);
+      currentGraph.links.forEach(l => {
+        const s = l.source.id || l.source; const t = l.target.id || l.target;
+        if (s === node.id) neighborIds.add(t);
+        if (t === node.id) neighborIds.add(s);
+      });
+      gNodes.selectAll('circle').attr('fill-opacity', d => neighborIds.has(d.id) ? 0.95 : 0.2);
+      gNodes.selectAll('text').attr('fill-opacity', d => neighborIds.has(d.id) ? 1 : 0.2);
+      gLinks.attr('stroke-opacity', d => {
+        const s = d.source.id || d.source; const t = d.target.id || d.target;
+        return (s === node.id || t === node.id) ? 0.9 : 0.1;
+      }).attr('stroke', d => {
+        const s = d.source.id || d.source; const t = d.target.id || d.target;
+        return (s === node.id || t === node.id) ? '#94A3B8' : '#E5E7EB';
+      });
+    }
+    function clearHighlight() {
+      gNodes.selectAll('circle').attr('fill-opacity', 0.88);
+      gNodes.selectAll('text').attr('fill-opacity', 1);
+      gLinks.attr('stroke-opacity', 0.8).attr('stroke', '#CBD5E1');
+    }
+    function showTooltip(d, x, y) {
+      const tip = $('#tooltip');
+      tip.textContent = d.type === 'note' ? `筆記：${d.label}` : `關鍵字：${d.label}`;
+      tip.style.left = `${x}px`; tip.style.top = `${y}px`; tip.classList.remove('hidden');
+    }
+    const hideTooltip = () => $('#tooltip').classList.add('hidden');
+    function onMouseOverNode(e, d) { highlightNeighbors(d); const { clientX, clientY } = e; showTooltip(d, clientX, clientY); }
+    function onMouseOutNode() { clearHighlight(); hideTooltip(); }
+
+    // ========= 雙鏈/反向連結輔助 =========
+    function buildTitleIndex() {
+      const map = new Map();
+      state.notes.forEach(n => {
+        const t = (n.title || "").trim();
+        if (!t) return;
+        const key = t.toLowerCase();
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(n.id);
+      });
+      return map; // lowerTitle -> [ids]
+    }
+    function computeOutlinks(note) {
+      return extractWikiLinks(note.content).map(l => l.target);
+    }
+    function computeBacklinks(targetTitle) {
+      const res = [];
+      const t = targetTitle.trim().toLowerCase();
+      state.notes.forEach(n => {
+        if ((n.title || "").trim().toLowerCase() === t) return; // 不含自身
+        const outs = computeOutlinks(n).map(s => s.trim().toLowerCase());
+        if (outs.includes(t)) res.push(n.id);
+      });
+      return res;
+    }
+
+    // ========= 詳情面板 =========
+    function onNodeClick(d) {
+      const panel = $('#detailsPanel');
+      if (d.type === 'note') {
+        const note = state.notes.find(n => `note-${n.id}` === d.id);
+        const { tags } = tokenize(note.content, note.title);
+        const { noteKeywords } = computeTfIdf(state.notes, 10);
+        const topKw = (noteKeywords.get(note.id) || []).slice(0, 10);
+        const outs = computeOutlinks(note);
+        const backs = computeBacklinks(note.title || "");
+        const backList = backs.map(id => {
+          const n = state.notes.find(x => x.id === id);
+          return `<li class="py-1 flex items-center justify-between gap-2"><div class="truncate">${escapeHTML(n?.title || '(未命名)')}</div><button class="btn-secondary" onclick="editNote(${id})">開啟</button></li>`;
+        }).join('');
+        const outList = outs.map(t => {
+          const hit = state.notes.find(x => (x.title||"").trim().toLowerCase() === t.trim().toLowerCase());
+          return `<li class="py-1 flex items-center justify-between gap-2"><div class="truncate">[[${escapeHTML(t)}]]</div><button class="btn-secondary" onclick="openOrCreateByTitle('${escapeAttr(t)}')">${hit ? '開啟' : '建立'}</button></li>`;
+        }).join('');
+        panel.innerHTML = `
+          <div class="space-y-3">
+            <div class="font-semibold">${escapeHTML(note.title || '(未命名)')}</div>
+            <div class="text-slate-600 whitespace-pre-wrap">${escapeHTML(note.content).slice(0, 500)}</div>
+
+            <div>
+              <div class="text-xs text-slate-500 mb-1">標籤</div>
+              <div>${tags.map(t=>`<span class="chip">#${escapeHTML(t)}</span>`).join('') || '<span class="text-xs text-slate-400">—</span>'}</div>
+            </div>
+            <div>
+              <div class="text-xs text-slate-500 mb-1">關鍵字</div>
+              <div>${topKw.map(k=>`<span class="chip">${escapeHTML(k.token)}</span>`).join('') || '<span class="text-xs text-slate-400">—</span>'}</div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <div class="text-xs text-slate-500 mb-1">出站連結（[[...]]）</div>
+                <ul class="divide-y divide-slate-100">${outList || '<li class="text-xs text-slate-400 py-2">—</li>'}</ul>
+              </div>
+              <div>
+                <div class="text-xs text-slate-500 mb-1">反向連結</div>
+                <ul class="divide-y divide-slate-100">${backList || '<li class="text-xs text-slate-400 py-2">—</li>'}</ul>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 pt-1">
+              <button class="btn-secondary" onclick="editNote(${note.id})">在編輯器開啟</button>
+              <button class="btn-danger" onclick="deleteNote(${note.id})">刪除</button>
+            </div>
+          </div>
+        `;
+      } else {
+        const token = d.label;
+        const related = [];
+        currentGraph.links.forEach(l => {
+          const s = l.source.id || l.source; const t = l.target.id || l.target;
+          if (s === `kw-${token}` && t.startsWith('note-')) related.push({ noteId: +t.replace('note-',''), w: l.weight });
+          if (t === `kw-${token}` && s.startsWith('note-')) related.push({ noteId: +s.replace('note-',''), w: l.weight });
+        });
+        related.sort((a,b)=>b.w - a.w);
+        const items = related.slice(0,12).map(r => {
+          const note = state.notes.find(n => n.id === r.noteId);
+          return `
+            <li class="flex items-center justify-between gap-2 py-1">
+              <div class="truncate">${escapeHTML(note?.title || '(未命名)')}</div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="text-[10px] text-slate-500">關聯強度 ${r.w.toFixed(2)}</span>
+                <button class="btn-secondary" onclick="editNote(${r.noteId})">開啟</button>
+              </div>
+            </li>
+          `;
+        }).join('');
+        panel.innerHTML = `
+          <div class="space-y-2">
+            <div class="font-semibold">關鍵字：${escapeHTML(token)}</div>
+            <div class="text-xs text-slate-500">出現於 ${d.df || 0} 則筆記（DF）</div>
+            <div>
+              <div class="text-xs text-slate-500 mb-1">最相關的筆記</div>
+              <ul class="divide-y divide-slate-100">${items || '<li class="text-xs text-slate-400 py-2">暫無</li>'}</ul>
+            </div>
+          </div>
+        `;
+      }
+      highlightNeighbors(d);
+    }
+
+    // ========= UI：筆記 CRUD =========
+    function renderNotesList() {
+      const list = $('#notesList');
+      const q = $('#searchNotes').value.trim().toLowerCase();
+      const filtered = state.notes
+        .map(n => ({...n, score: searchScore(n, q)}))
+        .filter(n => n.score > 0 || q === '')
+        .sort((a,b)=> b.updatedAt - a.updatedAt);
+
+      list.innerHTML = filtered.map(n => {
+        const tags = extractTags(n.content + " " + n.title);
+        const outs = extractWikiLinks(n.content);
+        return `
+          <li class="p-3 border border-slate-200 rounded-md bg-white hover:bg-slate-50">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-medium truncate">${escapeHTML(n.title || '(未命名)')}</div>
+              <div class="text-[10px] text-slate-500 shrink-0">${new Date(n.updatedAt).toLocaleString()}</div>
+            </div>
+            <div class="text-xs text-slate-600 line-clamp-2 mt-1">${escapeHTML(n.content).slice(0, 140)}</div>
+            <div class="mt-2 flex flex-wrap">${tags.map(t=>`<span class="chip">#${escapeHTML(t)}</span>`).join('')}</div>
+            ${outs.length ? `<div class="mt-2 text-[11px] text-slate-500">[[${outs.map(o=>escapeHTML(o.target)).join(']], [[')}]]</div>` : ''}
+            <div class="mt-2 flex items-center gap-2">
+              <button class="btn-secondary" onclick="editNote(${n.id})">編輯</button>
+              <button class="btn-secondary" onclick="duplicateNote(${n.id})">複製</button>
+              <button class="btn-danger" onclick="deleteNote(${n.id})">刪除</button>
+            </div>
+          </li>
+        `;
+      }).join('');
+
+      $('#noNotesHint').classList.toggle('hidden', state.notes.length !== 0);
+    }
+    function searchScore(note, q) {
+      if (!q) return 1;
+      const text = `${note.title} ${note.content}`.toLowerCase();
+      return text.includes(q) ? 1 : 0;
+    }
+    function clearForm() {
+      $('#titleInput').value = '';
+      $('#contentInput').value = '';
+      $('#liveTags').innerHTML = '';
+      $('#liveKeywords').innerHTML = '';
+      $('#mdPreview').innerHTML = '';
+      state.selectedId = null;
+      saveStateLS();
+    }
+    async function saveNote() {
+      const title = $('#titleInput').value.trim();
+      const content = $('#contentInput').value.trim();
+      if (!title && !content) { alert('請輸入標題或內容'); return; }
+      const now = Date.now();
+      if (state.selectedId) {
+        const n = state.notes.find(n => n.id === state.selectedId);
+        if (n) {
+          n.title = title; n.content = content; n.updatedAt = now;
+          await persistNote(n);
+        }
+      } else {
+        const n = { id: state.nextId++, title, content, createdAt: now, updatedAt: now };
+        state.notes.unshift(n);
+        await persistNote(n);
+      }
+      clearForm();
+      renderNotesList();
+      rebuildGraph();
+    }
+    window.editNote = (id) => {
+      const n = state.notes.find(n => n.id === id);
+      if (!n) return;
+      state.selectedId = n.id;
+      $('#titleInput').value = n.title || '';
+      $('#contentInput').value = n.content || '';
+      updateLivePreview();
+      saveStateLS();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    window.deleteNote = async (id) => {
+      if (!confirm('確定要刪除這則筆記嗎？此操作無法還原。')) return;
+      state.notes = state.notes.filter(n => n.id !== id);
+      if (state.selectedId === id) state.selectedId = null;
+      await removeNote(id);
+      renderNotesList();
+      rebuildGraph();
+    };
+    window.duplicateNote = async (id) => {
+      const n = state.notes.find(n => n.id === id); if (!n) return;
+      const copy = { id: state.nextId++, title: `${n.title || '(未命名)'}（複本）`, content: n.content, createdAt: Date.now(), updatedAt: Date.now() };
+      state.notes.unshift(copy);
+      await persistNote(copy);
+      renderNotesList();
+      rebuildGraph();
+    };
+
+    // ========= 匯入 / 匯出 / 全清 =========
+    $('#exportBtn')?.addEventListener('click', () => {
+      const data = { exportedAt: new Date().toISOString(), notes: state.notes, prefs: { synonymsText: state.synonymsText, useIDB } };
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `atomic-notes-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`;
+      a.click(); URL.revokeObjectURL(url);
+    });
+    $('#importInput')?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const data = JSON.parse(reader.result);
+          if (!Array.isArray(data.notes)) { alert('檔案格式不正確'); return; }
+          if (!confirm('匯入將合併到現有資料中，可能造成重複。是否繼續？')) return;
+          const seen = new Set(state.notes.map(n => hashNote(n)));
+          data.notes.forEach(n => {
+            const candidate = { title: n.title || '', content: n.content || '' };
+            if (!seen.has(hashNote(candidate))) {
+              const m = { id: state.nextId++, title: candidate.title, content: candidate.content, createdAt: Date.now(), updatedAt: Date.now() };
+              state.notes.push(m);
+            }
+          });
+          if (data.prefs && typeof data.prefs.synonymsText === 'string') {
+            state.synonymsText = data.prefs.synonymsText;
+            $('#synonymsInput').value = state.synonymsText;
+            aliasMap = parseSynonyms(state.synonymsText);
+          }
+          await persistAll();
+          renderNotesList();
+          rebuildGraph();
+          alert('匯入完成');
+        } catch(err) { alert('讀取失敗：' + err.message); }
+        finally { e.target.value = ''; }
+      };
+      reader.readAsText(file);
+    });
+    $('#resetAllBtn')?.addEventListener('click', async () => {
+      if (!confirm('確定要清空所有筆記與設定嗎？此操作無法還原。')) return;
+      state = { notes: [], selectedId: null, nextId: 1, synonymsText: state.synonymsText };
+      await persistAll();
+      renderNotesList(); rebuildGraph(); clearForm();
+    });
+
+    // ========= 即時預覽 =========
+    const updateLivePreview = debounce(() => {
+      const title = $('#titleInput').value;
+      const content = $('#contentInput').value;
+      const { tags, terms } = tokenize(content, title);
+      $('#liveTags').innerHTML = tags.map(t => `<span class="chip">#${escapeHTML(t)}</span>`).join('');
+      const tf = new Map();
+      [...terms, ...tags].forEach(tok => tf.set(tok, (tf.get(tok) || 0) + 1));
+      const total = Array.from(tf.values()).reduce((a,b)=>a+b,0) || 1;
+      const tmpScores = Array.from(tf.entries()).map(([token, cnt]) => ({ token, score: cnt/total }));
+      tmpScores.sort((a,b)=>b.score - a.score);
+      $('#liveKeywords').innerHTML = tmpScores.slice(0, 12).map(k => `<span class="chip">${escapeHTML(k.token)}</span>`).join('');
+      if ($('#livePreviewToggle').checked) {
+        const html = renderMarkdownWithWiki(content);
+        $('#mdPreview').innerHTML = html;
+      } else {
+        $('#mdPreview').innerHTML = '<div class="text-slate-400 text-xs">已關閉預覽</div>';
+      }
+    }, 150);
+
+    // ========= 控制與事件 =========
+    $('#saveBtn')?.addEventListener('click', saveNote);
+    $('#clearBtn')?.addEventListener('click', clearForm);
+    $('#titleInput')?.addEventListener('input', updateLivePreview);
+    $('#contentInput')?.addEventListener('input', updateLivePreview);
+    $('#searchNotes')?.addEventListener('input', debounce(renderNotesList, 100));
+    $('#mdPreview')?.addEventListener('click', handleWikiClick);
+    $('#livePreviewToggle')?.addEventListener('change', updateLivePreview);
+
+    $('#rebuildBtn')?.addEventListener('click', () => rebuildGraph());
+    $('#centerBtn')?.addEventListener('click', () => centerZoom());
+    $('#kwCount')?.addEventListener('input', (e) => { $('#kwCountVal').textContent = e.target.value; rebuildGraph(); });
+    $('#linkThresh')?.addEventListener('input', (e) => { const v=(+e.target.value/100).toFixed(2); $('#linkThreshVal').textContent=v; rebuildGraph(); });
+    $('#showKwKw')?.addEventListener('change', () => rebuildGraph());
+    $('#colorCommunities')?.addEventListener('change', () => rebuildGraph());
+    $('#communityFilter')?.addEventListener('change', () => renderGraph(currentGraph)); // 重新套用篩選
+
+    $('#settingsBtn')?.addEventListener('click', () => $('#settingsCard').classList.toggle('hidden'));
+    $('#applySettingsBtn')?.addEventListener('click', async () => {
+      state.synonymsText = $('#synonymsInput').value || "";
+      aliasMap = parseSynonyms(state.synonymsText);
+      useIDB = $('#useIDB').checked;
+      savePrefs();
+      if (useIDB && !idbReady) await idb.init();
+      await persistAll();
+      rebuildGraph();
+      alert('設定已套用');
+    });
+    $('#migrateToIDBBtn')?.addEventListener('click', async () => {
+      if (!useIDB) { alert('請先勾選「使用 IndexedDB」'); return; }
+      if (!idbReady) await idb.init();
+      await idb.clear();
+      for (const n of state.notes) await idb.put(n);
+      alert('已將現有資料遷移至 IndexedDB');
+    });
+
+    // ========= 重建圖譜 =========
+    function rebuildGraph() {
+      const graph = buildGraph(state.notes);
+      setupGraph();
+      renderGraph(graph);
+    }
+
+    // ========= 其他 =========
+    const escapeHTML = (s) => (s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const escapeAttr = (s) => (s || '').replace(/['"\\]/g, '\\$&');
+    const hashNote = (n) => {
+      const s = (n.title || '') + '|' + (n.content || '');
+      let h = 0; for (let i=0;i<s.length;i++){ h=((h<<5)-h)+s.charCodeAt(i); h|=0; } return h;
+    };
+
+    // ========= 初始化 =========
+    async function init() {
+      loadPrefs();
+      aliasMap = parseSynonyms(state.synonymsText);
+      loadStateLS();
+      if (useIDB) {
+        try {
+          await idb.init();
+          const all = await idb.getAll();
+          if (all && all.length > 0) {
+            state.notes = all;
+            state.nextId = state.notes.reduce((m,n)=>Math.max(m, n.id||0), 0) + 1;
+          } else {
+            // 將 localStorage 的資料帶入 IndexedDB
+            for (const n of state.notes) await idb.put(n);
+          }
+        } catch(e){ console.warn('IndexedDB 初始化失敗，改用 localStorage', e); useIDB = false; savePrefs(); }
+      }
+
+      renderNotesList();
+      setupGraph();
+      rebuildGraph();
+
+      // Demo 初始筆記（若空）
+      if (state.notes.length === 0) {
+        const seed = [
+          { title: "原子筆記（Atomic Notes）的核心", content: "一則筆記只承載一個清晰可鏈接的觀念，方便在不同脈絡中重組。#AtomicNotes #Zettelkasten\n可用 [[Zettelkasten]] 方法管理。" },
+          { title: "Zettelkasten：連結思考的實踐", content: "以鏈接取代分類，將想法彼此連接形成網狀結構。使用永久筆記、文獻筆記和臨時筆記。#Zettelkasten #連結\n參考 [[原子筆記（Atomic Notes）的核心]]。" },
+          { title: "TF-IDF 為何有效？", content: "TF-IDF 透過詞頻與逆文件頻率衡量字詞的重要性，使常見詞被降權、關鍵詞被突顯。#NLP #TFIDF #關鍵字" },
+          { title: "建立知識圖譜的最小實作", content: "擷取關鍵字→建立筆記與關鍵字的節點→以權重連線→用力導向圖視覺化。#Graph #D3 #可視化" },
+          { title: "人工智慧", content: "人工智慧（AI）領域包含機器學習、深度學習、自然語言處理（NLP）。" }
+        ];
+        seed.forEach(s => state.notes.push({ id: state.nextId++, title: s.title, content: s.content, createdAt: Date.now(), updatedAt: Date.now() }));
+        await persistAll();
+        renderNotesList(); rebuildGraph();
+      }
+
+      // 初次預覽同步
+      updateLivePreview();
+      window.addEventListener('resize', debounce(() => centerZoom(), 150));
+    }
+
+    // 對外可用函式（詳情面板/預覽）
+    window.openOrCreateByTitle = openOrCreateByTitle;
+    window.editNote = window.editNote;
+    window.deleteNote = window.deleteNote;
+
+    init();
+  </script>
+<script>window.parent.postMessage({ action: "ready" }, "*"); 
+ 
+window.console = new Proxy(console, {
+  get(target, prop) {
+    if (['log', 'warn', 'error'].includes(prop)) {
+      return new Proxy(target[prop], {
+        apply(fn, thisArg, args) {
+          fn.apply(thisArg, args);
+          window.parent.postMessage({ action: 'console', 
+            type: prop, 
+            args: args.map((arg) => {
+              try {
+                return JSON.stringify(arg).replace(/^["']|["']$/g, '');
+              } catch (e) {
+                return arg;
+              }
+            }) 
+          }, '*');
+        }
+      });
+    }
+    return target[prop];
+  }
+});
+</script></body>
+</html>

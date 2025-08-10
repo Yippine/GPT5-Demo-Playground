@@ -1,0 +1,1406 @@
+
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>PARA 團隊專案管理（單檔版）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="description" content="一頁式 PARA 方法多人團隊專案管理：Projects/Areas/Resources/Archives、看板、週檢閱、SOP、資源庫、封存、搜尋、匯入匯出、模板。" />
+  <style>
+    /* 捲動列優化 */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    /* 拖曳高亮 */
+    .droppable-hover { outline: 2px dashed #60a5fa; outline-offset: -6px; }
+    /* 卡片拖曳時半透明 */
+    .dragging { opacity: 0.5; }
+    /* 簡易 tooltip */
+    [data-tooltip] { position: relative; }
+    [data-tooltip]:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      white-space: nowrap;
+      background: #0f172a;
+      color: #fff;
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      top: -34px;
+      left: 0;
+      z-index: 50;
+    }
+    /* 避免選取文字影響拖曳 */
+    .no-select { user-select: none; }
+    /* Modal 背景 */
+    .modal-bg { background: rgba(15,23,42,.5); }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <!-- 頂部列 -->
+  <header class="border-b bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-white font-bold">P</div>
+        <div>
+          <h1 class="text-lg font-semibold">PARA 團隊專案管理</h1>
+          <p class="text-xs text-slate-500">Projects · Areas · Resources · Archives</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="globalSearch" type="text" placeholder="搜尋（專案/任務/區域/資源/標籤/成員）"
+               class="w-64 md:w-96 px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button id="btnSearch" class="px-3 py-2 bg-slate-100 rounded hover:bg-slate-200">搜尋</button>
+        <button id="btnExport" class="px-3 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700">匯出 JSON</button>
+        <label class="px-3 py-2 bg-slate-100 rounded hover:bg-slate-200 cursor-pointer">
+          匯入 JSON
+          <input id="importFile" type="file" accept="application/json" class="hidden" />
+        </label>
+        <button id="btnTemplates" class="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">模板</button>
+        <button id="btnHelp" class="px-3 py-2 bg-slate-100 rounded hover:bg-slate-200">說明</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 分頁 -->
+  <nav class="bg-white border-b">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-2 overflow-x-auto">
+      <button data-tab="projects" class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600">專案</button>
+      <button data-tab="areas" class="tab-btn px-4 py-3 text-sm text-slate-600 hover:text-slate-900">責任域</button>
+      <button data-tab="resources" class="tab-btn px-4 py-3 text-sm text-slate-600 hover:text-slate-900">資源庫</button>
+      <button data-tab="archives" class="tab-btn px-4 py-3 text-sm text-slate-600 hover:text-slate-900">封存</button>
+      <button data-tab="review" class="tab-btn px-4 py-3 text-sm text-slate-600 hover:text-slate-900">週檢閱</button>
+      <button data-tab="team" class="tab-btn px-4 py-3 text-sm text-slate-600 hover:text-slate-900">成員/設定</button>
+      <button data-tab="about" class="tab-btn px-4 py-3 text-sm text-slate-600 hover:text-slate-900">PARA 說明</button>
+    </div>
+  </nav>
+
+  <!-- 主體 -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- 專案頁 -->
+    <section id="tab-projects" class="tab-page">
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <!-- 專案清單 -->
+        <aside class="lg:col-span-1 bg-white border rounded p-4">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-semibold">專案清單</h2>
+            <button id="btnAddProject" class="px-2 py-1 bg-blue-600 text-white rounded text-sm">新增</button>
+          </div>
+          <div class="mb-3 flex items-center gap-2">
+            <select id="projectFilterAssignee" class="w-full px-2 py-1 border rounded text-sm">
+              <option value="">篩選：全部成員</option>
+            </select>
+          </div>
+          <ul id="projectList" class="space-y-2 max-h-96 overflow-auto pr-2"></ul>
+        </aside>
+
+        <!-- 看板區 -->
+        <section class="lg:col-span-3 bg-white border rounded p-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 id="currentProjectTitle" class="font-semibold">未選擇專案</h2>
+              <p id="currentProjectMeta" class="text-xs text-slate-500"></p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="btnEditProject" class="px-2 py-1 bg-slate-100 rounded">編輯</button>
+              <button id="btnStarProject" class="px-2 py-1 bg-amber-100 text-amber-800 rounded">焦點</button>
+              <button id="btnArchiveProject" class="px-2 py-1 bg-slate-100 rounded">封存</button>
+              <button id="btnAddTask" class="px-2 py-1 bg-emerald-600 text-white rounded">新增任務</button>
+            </div>
+          </div>
+
+          <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 no-select">
+            <!-- 待辦 -->
+            <div class="col bg-slate-50 rounded border p-2" data-status="todo">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold text-slate-700">待辦</h3>
+                <span id="count-todo" class="text-xs text-slate-500">0</span>
+              </div>
+              <div class="dropzone min-h-40 space-y-2" id="col-todo"></div>
+            </div>
+            <!-- 進行中 -->
+            <div class="col bg-slate-50 rounded border p-2" data-status="doing">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold text-slate-700">進行中</h3>
+                <span id="count-doing" class="text-xs text-slate-500">0</span>
+              </div>
+              <div class="dropzone min-h-40 space-y-2" id="col-doing"></div>
+            </div>
+            <!-- 已完成 -->
+            <div class="col bg-slate-50 rounded border p-2" data-status="done">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold text-slate-700">已完成</h3>
+                <span id="count-done" class="text-xs text-slate-500">0</span>
+              </div>
+              <div class="dropzone min-h-40 space-y-2" id="col-done"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- 責任域頁 -->
+    <section id="tab-areas" class="tab-page hidden">
+      <div class="bg-white border rounded p-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold">責任域（Areas）</h2>
+          <button id="btnAddArea" class="px-3 py-2 bg-blue-600 text-white rounded">新增責任域</button>
+        </div>
+        <p class="text-sm text-slate-500 mt-1">用來維持長期標準（SOP/指標），不以完成為目標</p>
+        <div id="areaList" class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+      </div>
+    </section>
+
+    <!-- 資源庫頁 -->
+    <section id="tab-resources" class="tab-page hidden">
+      <div class="bg-white border rounded p-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold">資源庫（Resources）</h2>
+          <div class="flex items-center gap-2">
+            <input id="resourceSearch" class="px-2 py-1 border rounded text-sm" placeholder="搜尋資源/標籤/關鍵字">
+            <button id="btnAddResource" class="px-3 py-2 bg-blue-600 text-white rounded">新增資源</button>
+          </div>
+        </div>
+        <p class="text-sm text-slate-500 mt-1">按主題聚合知識與素材，於需要時連結到專案</p>
+        <div id="resourceList" class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+      </div>
+    </section>
+
+    <!-- 封存頁 -->
+    <section id="tab-archives" class="tab-page hidden">
+      <div class="bg-white border rounded p-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold">封存（Archives）</h2>
+          <button id="btnClearArchives" class="px-3 py-2 bg-slate-100 rounded">清除全部</button>
+        </div>
+        <p class="text-sm text-slate-500 mt-1">完成或暫停的專案/任務/資源</p>
+        <div id="archiveList" class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+      </div>
+    </section>
+
+    <!-- 週檢閱頁 -->
+    <section id="tab-review" class="tab-page hidden">
+      <div class="bg-white border rounded p-4">
+        <h2 class="font-semibold">週檢閱（PARA Review Wizard）</h2>
+        <p class="text-sm text-slate-500 mt-1">依序完成：專案清點 → 責任域維護 → 資源清理 → 設定本週焦點與 WIP</p>
+        <div class="mt-4 space-y-4">
+          <!-- Step 1 -->
+          <div class="border rounded p-3">
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold">步驟 1：專案清點</h3>
+              <button id="btnReviewStep1" class="px-3 py-1 bg-slate-100 rounded">展開</button>
+            </div>
+            <div id="reviewStep1" class="hidden mt-3">
+              <p class="text-sm text-slate-500 mb-2">檢查所有活躍專案，更新狀態、完成的移至封存，阻礙的明確化下一步</p>
+              <div id="reviewProjects" class="space-y-2"></div>
+            </div>
+          </div>
+          <!-- Step 2 -->
+          <div class="border rounded p-3">
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold">步驟 2：責任域維護</h3>
+              <button id="btnReviewStep2" class="px-3 py-1 bg-slate-100 rounded">展開</button>
+            </div>
+            <div id="reviewStep2" class="hidden mt-3">
+              <p class="text-sm text-slate-500 mb-2">逐一檢查 SOP/指標，有偏離就建立一個小任務或改善點</p>
+              <div id="reviewAreas" class="space-y-2"></div>
+            </div>
+          </div>
+          <!-- Step 3 -->
+          <div class="border rounded p-3">
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold">步驟 3：資源清理</h3>
+              <button id="btnReviewStep3" class="px-3 py-1 bg-slate-100 rounded">展開</button>
+            </div>
+            <div id="reviewStep3" class="hidden mt-3">
+              <p class="text-sm text-slate-500 mb-2">快速掃描資源，刪除過時或加上標籤，將有用素材連結到即將推進的專案</p>
+              <div id="reviewResources" class="space-y-2"></div>
+            </div>
+          </div>
+          <!-- Step 4 -->
+          <div class="border rounded p-3">
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold">步驟 4：設定本週焦點與 WIP</h3>
+              <button id="btnReviewStep4" class="px-3 py-1 bg-slate-100 rounded">展開</button>
+            </div>
+            <div id="reviewStep4" class="hidden mt-3">
+              <p class="text-sm text-slate-500 mb-2">將 1–3 個專案設為焦點，並限制活躍專案數量（WIP）</p>
+              <div class="flex items-center gap-3">
+                <label class="text-sm">WIP 上限</label>
+                <input id="wipLimitInput" type="number" min="1" class="w-24 px-2 py-1 border rounded" />
+                <button id="btnApplyWip" class="px-3 py-1 bg-blue-600 text-white rounded">套用</button>
+              </div>
+              <div id="reviewFocus" class="mt-3 space-y-2"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 成員/設定頁 -->
+    <section id="tab-team" class="tab-page hidden">
+      <div class="bg-white border rounded p-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold">成員與設定</h2>
+          <button id="btnAddUser" class="px-3 py-2 bg-blue-600 text-white rounded">新增成員</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <div>
+            <h3 class="font-semibold">成員</h3>
+            <ul id="userList" class="mt-2 space-y-2"></ul>
+          </div>
+          <div>
+            <h3 class="font-semibold">設定</h3>
+            <div class="mt-2 space-y-2">
+              <div class="flex items-center gap-2">
+                <label class="w-28 text-sm">工作區名稱</label>
+                <input id="workspaceName" class="flex-1 px-2 py-1 border rounded" placeholder="例如：Acme 產品研發" />
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="w-28 text-sm">WIP 上限</label>
+                <input id="wipLimitSetting" type="number" min="1" class="w-24 px-2 py-1 border rounded" />
+              </div>
+              <div class="flex items-center gap-2">
+                <button id="btnResetApp" class="px-3 py-2 bg-rose-600 text-white rounded">重設（清空資料）</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PARA 說明頁 -->
+    <section id="tab-about" class="tab-page hidden">
+      <div class="bg-white border rounded p-4">
+        <h2 class="font-semibold">PARA 方法簡介（團隊版重點）</h2>
+        <div class="prose prose-slate max-w-none">
+          <ul class="list-disc pl-5 mt-2">
+            <li>PARA 包含：Projects（有清晰成果的短期專案）、Areas（長期維持標準的責任域）、Resources（按主題的知識與素材）、Archives（非活躍的封存）</li>
+            <li>以專案為入口組織資訊，確保「需要時找得到、拿來就能用」</li>
+            <li>跨工具、跨平台可一致落地，維持結構與命名一致</li>
+            <li>每週進行 PARA 檢閱：清點專案 → 維護責任域 → 清理資源 → 設定本週焦點與 WIP</li>
+            <li>封存不是丟棄，保持當前工作台乾淨，降低切換成本</li>
+          </ul>
+          <p class="text-sm text-slate-500 mt-2">說明基於 PARA 與 Building a Second Brain 的核心原則</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 對話框：專案 -->
+  <div id="modalProject" class="fixed inset-0 hidden items-center justify-center modal-bg z-50">
+    <div class="bg-white rounded shadow-lg w-full max-w-xl">
+      <div class="p-4 border-b flex items-center justify-between">
+        <h3 class="font-semibold" id="modalProjectTitle">新增專案</h3>
+        <button data-close="#modalProject" class="px-2 py-1">✕</button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div>
+          <label class="text-sm">專案名稱（以成果命名）</label>
+          <input id="projName" class="w-full px-3 py-2 border rounded" placeholder="例如：上線 v1.2 登入雙因子驗證" />
+        </div>
+        <div>
+          <label class="text-sm">成果敘述（Outcome）</label>
+          <textarea id="projOutcome" class="w-full px-3 py-2 border rounded" rows="2" placeholder="一句話描述成功的模樣"></textarea>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="text-sm">負責人</label>
+            <select id="projOwner" class="w-full px-2 py-2 border rounded"></select>
+          </div>
+          <div>
+            <label class="text-sm">截止日</label>
+            <input id="projDue" type="date" class="w-full px-2 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="text-sm">標籤（逗號分隔）</label>
+            <input id="projTags" class="w-full px-2 py-2 border rounded" placeholder="web, growth, sprint1" />
+          </div>
+        </div>
+      </div>
+      <div class="p-4 border-t flex items-center justify-end gap-2">
+        <button data-close="#modalProject" class="px-3 py-2 bg-slate-100 rounded">取消</button>
+        <button id="btnSaveProject" class="px-3 py-2 bg-blue-600 text-white rounded">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 對話框：任務 -->
+  <div id="modalTask" class="fixed inset-0 hidden items-center justify-center modal-bg z-50">
+    <div class="bg-white rounded shadow-lg w-full max-w-xl">
+      <div class="p-4 border-b flex items-center justify-between">
+        <h3 class="font-semibold" id="modalTaskTitle">新增任務</h3>
+        <button data-close="#modalTask" class="px-2 py-1">✕</button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div>
+          <label class="text-sm">任務標題（下一步動作）</label>
+          <input id="taskTitle" class="w-full px-3 py-2 border rounded" placeholder="例如：串接 OTP 驗證 API" />
+        </div>
+        <div>
+          <label class="text-sm">詳細說明</label>
+          <textarea id="taskDesc" class="w-full px-3 py-2 border rounded" rows="2"></textarea>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="text-sm">負責人</label>
+            <select id="taskAssignee" class="w-full px-2 py-2 border rounded"></select>
+          </div>
+          <div>
+            <label class="text-sm">到期日</label>
+            <input id="taskDue" type="date" class="w-full px-2 py-2 border rounded" />
+          </div>
+          <div>
+            <label class="text-sm">優先級</label>
+            <select id="taskPriority" class="w-full px-2 py-2 border rounded">
+              <option value="P2">P2</option>
+              <option value="P1">P1</option>
+              <option value="P3">P3</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="text-sm">標籤（逗號分隔）</label>
+          <input id="taskTags" class="w-full px-3 py-2 border rounded" placeholder="backend, infra" />
+        </div>
+      </div>
+      <div class="p-4 border-t flex items-center justify-end gap-2">
+        <button data-close="#modalTask" class="px-3 py-2 bg-slate-100 rounded">取消</button>
+        <button id="btnSaveTask" class="px-3 py-2 bg-emerald-600 text-white rounded">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 對話框：責任域 -->
+  <div id="modalArea" class="fixed inset-0 hidden items-center justify-center modal-bg z-50">
+    <div class="bg-white rounded shadow-lg w-full max-w-xl">
+      <div class="p-4 border-b flex items-center justify-between">
+        <h3 class="font-semibold" id="modalAreaTitle">新增責任域</h3>
+        <button data-close="#modalArea" class="px-2 py-1">✕</button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div>
+          <label class="text-sm">責任域名稱</label>
+          <input id="areaName" class="w-full px-3 py-2 border rounded" placeholder="例如：用戶安全、資料品質、合規" />
+        </div>
+        <div>
+          <label class="text-sm">指標或標準（逗號分隔）</label>
+          <input id="areaMetrics" class="w-full px-3 py-2 border rounded" placeholder="如：登入成功率>99.9%, 平均延遲<200ms" />
+        </div>
+        <div>
+          <label class="text-sm">SOP 步驟（每行一項）</label>
+          <textarea id="areaSop" class="w-full px-3 py-2 border rounded" rows="4" placeholder="例：每週安全掃描&#10;每月稽核報告"></textarea>
+        </div>
+        <div>
+          <label class="text-sm">責任人</label>
+          <select id="areaOwner" class="w-full px-2 py-2 border rounded"></select>
+        </div>
+      </div>
+      <div class="p-4 border-t flex items-center justify-end gap-2">
+        <button data-close="#modalArea" class="px-3 py-2 bg-slate-100 rounded">取消</button>
+        <button id="btnSaveArea" class="px-3 py-2 bg-blue-600 text-white rounded">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 對話框：資源 -->
+  <div id="modalResource" class="fixed inset-0 hidden items-center justify-center modal-bg z-50">
+    <div class="bg-white rounded shadow-lg w-full max-w-xl">
+      <div class="p-4 border-b flex items-center justify-between">
+        <h3 class="font-semibold" id="modalResourceTitle">新增資源</h3>
+        <button data-close="#modalResource" class="px-2 py-1">✕</button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div>
+          <label class="text-sm">主題</label>
+          <input id="resTitle" class="w-full px-3 py-2 border rounded" placeholder="例如：OAuth2 最佳實務" />
+        </div>
+        <div>
+          <label class="text-sm">摘要</label>
+          <textarea id="resSummary" class="w-full px-3 py-2 border rounded" rows="3"></textarea>
+        </div>
+        <div>
+          <label class="text-sm">連結（以逗號分隔）</label>
+          <input id="resLinks" class="w-full px-3 py-2 border rounded" placeholder="https://..." />
+        </div>
+        <div>
+          <label class="text-sm">標籤</label>
+          <input id="resTags" class="w-full px-3 py-2 border rounded" placeholder="security, oauth, backend" />
+        </div>
+      </div>
+      <div class="p-4 border-t flex items-center justify-end gap-2">
+        <button data-close="#modalResource" class="px-3 py-2 bg-slate-100 rounded">取消</button>
+        <button id="btnSaveResource" class="px-3 py-2 bg-blue-600 text-white rounded">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通用訊息條 -->
+  <div id="toast" class="fixed bottom-4 right-4 px-4 py-2 bg-slate-900 text-white rounded shadow hidden"></div>
+
+  <script>
+    // ========= 基本工具 =========
+    const $ = (sel, root=document) => root.querySelector(sel);
+    const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+    const uid = (p='id') => p + '_' + Math.random().toString(36).slice(2, 9);
+    const todayStr = () => new Date().toISOString().slice(0,10);
+    const formatDate = d => d ? new Date(d).toLocaleDateString() : '';
+    const showToast = (msg) => {
+      const t = $('#toast');
+      t.textContent = msg;
+      t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), 1800);
+    };
+    const tagPills = (tags) => (tags || []).filter(Boolean).map(t => 
+      `<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs">${t}</span>`).join(' ');
+
+    // ========= 狀態儲存 =========
+    const STORAGE_KEY = 'paraAppStateV1';
+    let state = {
+      meta: { workspace: 'PARA Workspace', createdAt: Date.now() },
+      settings: { wipLimit: 5 },
+      users: [],
+      projects: [], // {id,name,outcome,ownerId,due,tags:[..],starred:boolean,archived:boolean,createdAt}
+      tasks: [],    // {id,projectId,title,desc,assigneeId,due,priority,status,tags:[..],createdAt,doneAt}
+      areas: [],    // {id,name,ownerId,metrics:[..],sop:[{id,text,checked}],createdAt}
+      resources: [],// {id,title,summary,links:[..],tags:[..],createdAt,archived:boolean}
+      archives: []  // {type:'project'|'task'|'resource', payload, archivedAt}
+    };
+
+    function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    function load() {
+      const s = localStorage.getItem(STORAGE_KEY);
+      if (s) { state = JSON.parse(s); }
+      if (!state.users || state.users.length === 0) seed();
+      renderAll();
+    }
+
+    // ========= 範本資料 =========
+    function seed() {
+      // 成員
+      const u1 = { id: uid('u'), name: 'Alice', color: '#ef4444' };
+      const u2 = { id: uid('u'), name: 'Bob', color: '#10b981' };
+      const u3 = { id: uid('u'), name: 'Carol', color: '#3b82f6' };
+      state.users.push(u1,u2,u3);
+
+      // 專案
+      const p1 = { id: uid('p'), name: '登入雙因子驗證上線', outcome: '所有用戶可啟用 2FA，失敗率<0.1%',
+        ownerId: u1.id, due: todayStr(), tags: ['security','release'], starred: true, archived: false, createdAt: Date.now() };
+      const p2 = { id: uid('p'), name: 'Q3 B2B 潛客名單擴充', outcome: '新增 200 家 ICP 名單並完成分級',
+        ownerId: u2.id, due: '', tags: ['growth','b2b'], starred: false, archived: false, createdAt: Date.now() };
+      state.projects.push(p1,p2);
+
+      // 任務
+      state.tasks.push(
+        { id: uid('t'), projectId: p1.id, title: '後端串接 OTP 供應商', desc: '',
+          assigneeId: u1.id, due: todayStr(), priority:'P1', status:'doing', tags:['backend'], createdAt:Date.now() },
+        { id: uid('t'), projectId: p1.id, title: '前端 2FA 設定頁', desc: '',
+          assigneeId: u3.id, due: '', priority:'P2', status:'todo', tags:['frontend'], createdAt:Date.now() },
+        { id: uid('t'), projectId: p1.id, title: '安全稽核測試', desc: '',
+          assigneeId: u1.id, due: '', priority:'P2', status:'todo', tags:['security'], createdAt:Date.now() },
+        { id: uid('t'), projectId: p2.id, title: '定義 ICP 準則', desc: '',
+          assigneeId: u2.id, due: '', priority:'P1', status:'doing', tags:['sales'], createdAt:Date.now() }
+      );
+
+      // 責任域
+      state.areas.push({
+        id: uid('a'), name: '用戶安全', ownerId: u1.id,
+        metrics: ['登入成功率>99.9%','客服單數<目標'],
+        sop: [{id:uid('s'),text:'每週安全掃描',checked:false},{id:uid('s'),text:'月度稽核報告',checked:false}],
+        createdAt: Date.now()
+      });
+      state.areas.push({
+        id: uid('a'), name: '銷售管道健康度', ownerId: u2.id,
+        metrics: ['每週新增潛客>50','MQL->SQL 轉換率>20%'],
+        sop: [{id:uid('s'),text:'每週管道盤點',checked:false},{id:uid('s'),text:'清理無效名單',checked:false}],
+        createdAt: Date.now()
+      });
+
+      // 資源
+      state.resources.push({
+        id: uid('r'), title: 'OAuth2/2FA 最佳實務', summary: '實作 2FA 常見風險與優化清單',
+        links: [], tags: ['security','oauth'], createdAt: Date.now(), archived:false
+      });
+      state.resources.push({
+        id: uid('r'), title: 'ICP 分級框架', summary: 'B2B 客戶理想輪廓與評分表',
+        links: [], tags: ['sales','b2b'], createdAt: Date.now(), archived:false
+      });
+      save();
+    }
+
+    // ========= 渲染與事件 =========
+    let currentProjectId = null;
+
+    function renderAll() {
+      // 標題
+      document.title = `${state.meta?.workspace || 'PARA Workspace'} · PARA`;
+      $('#workspaceName').value = state.meta?.workspace || '';
+      $('#wipLimitSetting').value = state.settings.wipLimit;
+      $('#wipLimitInput').value = state.settings.wipLimit;
+
+      // 成員下拉
+      const userOpts = state.users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+      $('#projOwner').innerHTML = `<option value="">（未指派）</option>` + userOpts;
+      $('#taskAssignee').innerHTML = `<option value="">（未指派）</option>` + userOpts;
+      $('#areaOwner').innerHTML = `<option value="">（未指派）</option>` + userOpts;
+      $('#projectFilterAssignee').innerHTML = `<option value="">篩選：全部成員</option>` + userOpts;
+
+      renderProjectsList();
+      renderCurrentProject();
+      renderAreas();
+      renderResources();
+      renderArchives();
+      renderUsers();
+      renderReviewLists();
+    }
+
+    // ---- 專案清單與看板 ----
+    function renderProjectsList() {
+      const ul = $('#projectList');
+      ul.innerHTML = '';
+
+      const assigneeFilter = $('#projectFilterAssignee').value || '';
+      const list = state.projects.filter(p => !p.archived).filter(p => {
+        if (!assigneeFilter) return true;
+        return p.ownerId === assigneeFilter;
+      });
+
+      // WIP 限制提示
+      const activeCount = list.length;
+      const warn = activeCount > state.settings.wipLimit;
+      if (warn) showToast(`活躍專案 ${activeCount} 超過 WIP 上限 ${state.settings.wipLimit}`);
+
+      list.sort((a,b) => (b.starred - a.starred) || (a.due||'').localeCompare(b.due||'') || a.name.localeCompare(b.name));
+      list.forEach(p => {
+        const owner = state.users.find(u => u.id === p.ownerId);
+        const li = document.createElement('li');
+        li.className = 'p-2 border rounded hover:bg-slate-50 cursor-pointer ' + (p.id === currentProjectId ? 'bg-slate-50' : '');
+        li.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                ${p.starred ? '<span title="焦點">⭐</span>' : ''}
+                <span class="font-medium">${p.name}</span>
+              </div>
+              <div class="text-xs text-slate-500 mt-0.5">${p.outcome || ''}</div>
+              <div class="flex items-center gap-2 mt-1">
+                ${owner ? `<span class="text-xs" style="color:${owner.color}">●</span><span class="text-xs">${owner.name}</span>` : ''}
+                ${p.due ? `<span class="text-xs px-2 py-0.5 bg-amber-100 text-amber-800 rounded">到期 ${formatDate(p.due)}</span>` : ''}
+              </div>
+              <div class="mt-1">${tagPills(p.tags)}</div>
+            </div>
+          </div>
+        `;
+        li.addEventListener('click', () => { currentProjectId = p.id; renderCurrentProject(); renderProjectsList(); });
+        ul.appendChild(li);
+      });
+
+      // 預設選擇
+      if (!currentProjectId && list[0]) {
+        currentProjectId = list[0].id;
+      }
+    }
+
+    function renderCurrentProject() {
+      const p = state.projects.find(x => x.id === currentProjectId && !x.archived);
+      if (!p) {
+        $('#currentProjectTitle').textContent = '未選擇專案';
+        $('#currentProjectMeta').textContent = '';
+        ['todo','doing','done'].forEach(s => $(`#col-${s}`).innerHTML = '');
+        ['todo','doing','done'].forEach(s => $(`#count-${s}`).textContent = '0');
+        return;
+      }
+      $('#currentProjectTitle').textContent = p.name;
+      const owner = state.users.find(u => u.id === p.ownerId);
+      $('#currentProjectMeta').textContent = `${p.outcome || ''} ${p.due ? ' · 到期 ' + formatDate(p.due) : ''} ${owner ? ' · 负责人 ' + owner.name : ''}`;
+
+      const tasks = state.tasks.filter(t => t.projectId === p.id);
+      const byStatus = { todo:[], doing:[], done:[] };
+      tasks.forEach(t => byStatus[t.status||'todo'].push(t));
+      ['todo','doing','done'].forEach(s => {
+        const col = $(`#col-${s}`);
+        col.innerHTML = '';
+        byStatus[s].forEach(t => col.appendChild(renderTaskCard(t)));
+        $(`#count-${s}`).textContent = byStatus[s].length;
+      });
+
+      // 綁定拖曳
+      $$('.dropzone').forEach(zone => {
+        zone.ondragover = (e) => { e.preventDefault(); zone.classList.add('droppable-hover'); }
+        zone.ondragleave = () => zone.classList.remove('droppable-hover');
+        zone.ondrop = (e) => {
+          e.preventDefault();
+          zone.classList.remove('droppable-hover');
+          const tid = e.dataTransfer.getData('text/plain');
+          const task = state.tasks.find(x => x.id === tid);
+          if (task) {
+            task.status = zone.parentElement.getAttribute('data-status');
+            if (task.status === 'done' && !task.doneAt) task.doneAt = Date.now();
+            save(); renderCurrentProject();
+          }
+        }
+      });
+    }
+
+    function renderTaskCard(t) {
+      const assignee = state.users.find(u => u.id === t.assigneeId);
+      const card = document.createElement('div');
+      card.className = 'bg-white border rounded p-2 shadow-sm';
+      card.draggable = true;
+      card.id = t.id;
+      card.addEventListener('dragstart', (e) => {
+        card.classList.add('dragging');
+        e.dataTransfer.setData('text/plain', t.id);
+      });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+      card.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div class="font-medium">${t.title}</div>
+          <div class="text-xs">${t.priority}</div>
+        </div>
+        <div class="text-xs text-slate-500 mt-1">${t.desc || ''}</div>
+        <div class="flex items-center gap-2 mt-2">
+          ${assignee ? `<span class="text-xs" style="color:${assignee.color}">●</span><span class="text-xs">${assignee.name}</span>` : '<span class="text-xs text-slate-400">未指派</span>'}
+          ${t.due ? `<span class="text-xs px-2 py-0.5 bg-amber-100 text-amber-800 rounded">${formatDate(t.due)}</span>` : ''}
+        </div>
+        <div class="mt-2 flex items-center justify-between">
+          <div class="flex flex-wrap gap-1">${tagPills(t.tags)}</div>
+          <div class="flex items-center gap-1">
+            <button class="text-xs px-2 py-1 bg-slate-100 rounded" data-action="edit">編輯</button>
+            <button class="text-xs px-2 py-1 bg-rose-100 text-rose-700 rounded" data-action="del">刪除</button>
+          </div>
+        </div>
+      `;
+      card.addEventListener('click', (e) => {
+        if (!(e.target instanceof HTMLElement)) return;
+        const action = e.target.getAttribute('data-action');
+        if (action === 'edit') openTaskModal(t);
+        if (action === 'del') {
+          if (confirm('確認刪除任務？')) {
+            // 封存再刪除（保留歷史）
+            state.archives.push({ type:'task', payload: t, archivedAt: Date.now() });
+            state.tasks = state.tasks.filter(x => x.id !== t.id);
+            save(); renderCurrentProject(); renderArchives();
+          }
+        }
+      });
+      return card;
+    }
+
+    // ---- 責任域 ----
+    function renderAreas() {
+      const wrap = $('#areaList');
+      wrap.innerHTML = '';
+      state.areas.forEach(a => {
+        const owner = state.users.find(u => u.id === a.ownerId);
+        const card = document.createElement('div');
+        card.className = 'border rounded p-3 bg-white';
+        card.innerHTML = `
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 class="font-semibold">${a.name}</h3>
+                ${owner ? `<span class="text-xs" style="color:${owner.color}">●</span><span class="text-xs">${owner.name}</span>` : ''}
+              </div>
+              <div class="text-xs text-slate-500">${(a.metrics||[]).join(' · ')}</div>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="px-2 py-1 text-xs bg-slate-100 rounded" data-action="edit">編輯</button>
+              <button class="px-2 py-1 text-xs bg-rose-100 text-rose-700 rounded" data-action="del">刪除</button>
+            </div>
+          </div>
+          <div class="mt-2">
+            <p class="text-sm font-medium mb-1">SOP</p>
+            <ul class="space-y-1" data-sop></ul>
+            <button class="mt-2 text-xs px-2 py-1 bg-slate-100 rounded" data-action="addStep">新增步驟</button>
+          </div>
+        `;
+        const ul = $('[data-sop]', card);
+        (a.sop || []).forEach(s => {
+          const li = document.createElement('li');
+          li.className = 'flex items-center gap-2';
+          li.innerHTML = `
+            <input type="checkbox" ${s.checked ? 'checked' : ''} data-step="${s.id}" />
+            <input type="text" value="${s.text}" class="flex-1 px-2 py-1 border rounded text-sm"/>
+            <button class="text-xs px-2 py-1 bg-rose-100 text-rose-700 rounded" data-step-del="${s.id}">刪除</button>
+          `;
+          ul.appendChild(li);
+        });
+
+        ul.addEventListener('change', (e) => {
+          const stepId = e.target.getAttribute('data-step');
+          if (stepId) {
+            const step = a.sop.find(x => x.id === stepId);
+            step.checked = e.target.checked;
+            save();
+          }
+        });
+        ul.addEventListener('input', (e) => {
+          const li = e.target.closest('li');
+          if (!li) return;
+          const idx = Array.from(ul.children).indexOf(li);
+          a.sop[idx].text = e.target.value || '';
+          save();
+        });
+        card.addEventListener('click', (e) => {
+          const el = e.target;
+          if (!(el instanceof HTMLElement)) return;
+          if (el.getAttribute('data-action') === 'addStep') {
+            a.sop.push({ id: uid('s'), text:'', checked:false });
+            save(); renderAreas();
+          }
+          if (el.getAttribute('data-action') === 'edit') {
+            openAreaModal(a);
+          }
+          if (el.getAttribute('data-action') === 'del') {
+            if (confirm('確認刪除責任域？')) {
+              state.areas = state.areas.filter(x => x.id !== a.id);
+              save(); renderAreas();
+            }
+          }
+          if (el.hasAttribute('data-step-del')) {
+            const sid = el.getAttribute('data-step-del');
+            a.sop = a.sop.filter(s => s.id !== sid);
+            save(); renderAreas();
+          }
+        });
+        wrap.appendChild(card);
+      });
+    }
+
+    // ---- 資源庫 ----
+    function renderResources() {
+      const wrap = $('#resourceList'); wrap.innerHTML = '';
+      const q = ($('#resourceSearch').value || '').toLowerCase();
+      state.resources.filter(r => !r.archived).filter(r => {
+        const hay = [r.title, r.summary, ...(r.tags||[])].join(' ').toLowerCase();
+        return !q || hay.includes(q);
+      }).forEach(r => wrap.appendChild(renderResourceCard(r)));
+    }
+    function renderResourceCard(r) {
+      const card = document.createElement('div');
+      card.className = 'border rounded p-3 bg-white';
+      const linksHtml = (r.links||[]).filter(Boolean).map(l => `<li class="truncate text-blue-700 underline">${l}</li>`).join('');
+      card.innerHTML = `
+        <div class="flex items-start justify-between">
+          <div>
+            <h3 class="font-semibold">${r.title}</h3>
+            <div class="text-xs text-slate-500 mt-1">${r.summary || ''}</div>
+            <div class="mt-1 flex flex-wrap gap-1">${tagPills(r.tags)}</div>
+            <ul class="mt-2 text-sm space-y-1">${linksHtml}</ul>
+          </div>
+          <div class="flex items-center gap-1">
+            <button class="px-2 py-1 text-xs bg-slate-100 rounded" data-action="edit">編輯</button>
+            <button class="px-2 py-1 text-xs bg-amber-100 text-amber-800 rounded" data-action="link">連到專案</button>
+            <button class="px-2 py-1 text-xs bg-slate-100 rounded" data-action="archive">封存</button>
+            <button class="px-2 py-1 text-xs bg-rose-100 text-rose-700 rounded" data-action="del">刪除</button>
+          </div>
+        </div>
+      `;
+      card.addEventListener('click', (e) => {
+        const el = e.target;
+        if (!(el instanceof HTMLElement)) return;
+        const a = el.getAttribute('data-action');
+        if (a === 'edit') openResourceModal(r);
+        if (a === 'link') {
+          const active = state.projects.filter(p => !p.archived);
+          if (active.length === 0) return alert('尚無活躍專案');
+          const names = active.map((p,i)=> `${i+1}. ${p.name}`).join('\n');
+          const pick = prompt(`選擇要連結的專案編號：\n${names}`);
+          const idx = parseInt(pick||'',10)-1;
+          if (idx>=0 && idx<active.length) {
+            const proj = active[idx];
+            // 在資源標籤加上專案名標籤（簡化連結示意）
+            r.tags = Array.from(new Set([...(r.tags||[]), `proj:${proj.name}`]));
+            save(); renderResources(); renderCurrentProject();
+            showToast('已將資源標記連結到專案');
+          }
+        }
+        if (a === 'archive') {
+          r.archived = true;
+          state.archives.push({ type:'resource', payload: r, archivedAt: Date.now()});
+          save(); renderResources(); renderArchives();
+        }
+        if (a === 'del') {
+          if (confirm('確認刪除資源？')) {
+            state.resources = state.resources.filter(x => x.id !== r.id);
+            save(); renderResources();
+          }
+        }
+      });
+      return card;
+    }
+
+    // ---- 封存 ----
+    function renderArchives() {
+      const wrap = $('#archiveList'); wrap.innerHTML = '';
+      state.archives.slice().reverse().forEach(a => {
+        const card = document.createElement('div');
+        card.className = 'border rounded p-3 bg-white';
+        let title = '', desc = '';
+        if (a.type === 'project') { title = a.payload.name; desc = a.payload.outcome || ''; }
+        if (a.type === 'task') { title = a.payload.title; desc = a.payload.desc || ''; }
+        if (a.type === 'resource') { title = a.payload.title; desc = a.payload.summary || ''; }
+        card.innerHTML = `
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="text-xs text-slate-500">${a.type.toUpperCase()}</div>
+              <h3 class="font-semibold">${title}</h3>
+              <div class="text-xs text-slate-500">${desc}</div>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="px-2 py-1 text-xs bg-slate-100 rounded" data-action="restore">復原</button>
+              <button class="px-2 py-1 text-xs bg-rose-100 text-rose-700 rounded" data-action="remove">刪除</button>
+            </div>
+          </div>
+        `;
+        card.addEventListener('click', (e) => {
+          const el = e.target;
+          if (!(el instanceof HTMLElement)) return;
+          const aidx = state.archives.indexOf(a);
+          if (el.getAttribute('data-action') === 'restore') {
+            if (a.type === 'project') {
+              a.payload.archived = false;
+              state.projects.push(a.payload);
+            }
+            if (a.type === 'task') {
+              state.tasks.push(a.payload);
+            }
+            if (a.type === 'resource') {
+              a.payload.archived = false;
+              state.resources.push(a.payload);
+            }
+            state.archives.splice(aidx,1);
+            save(); renderArchives(); renderProjectsList(); renderCurrentProject(); renderResources();
+          }
+          if (el.getAttribute('data-action') === 'remove') {
+            state.archives.splice(aidx,1);
+            save(); renderArchives();
+          }
+        });
+        wrap.appendChild(card);
+      });
+    }
+
+    // ---- 使用者 ----
+    function renderUsers() {
+      const ul = $('#userList'); ul.innerHTML = '';
+      state.users.forEach(u => {
+        const li = document.createElement('li');
+        li.className = 'p-2 border rounded bg-white flex items-center justify-between';
+        li.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full" style="background:${u.color}"></span>
+            <input value="${u.name}" class="px-2 py-1 border rounded text-sm"/>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="color" value="${u.color}" />
+            <button class="px-2 py-1 text-xs bg-rose-100 text-rose-700 rounded" data-action="del">刪除</button>
+          </div>
+        `;
+        li.addEventListener('input', (e) => {
+          const input = e.target;
+          if (input.type === 'text') u.name = input.value;
+          if (input.type === 'color') u.color = input.value;
+          save(); renderAll();
+        });
+        li.addEventListener('click', (e) => {
+          const el = e.target;
+          if (!(el instanceof HTMLElement)) return;
+          if (el.getAttribute('data-action') === 'del') {
+            if (confirm('刪除此成員？（任務與專案中的指派不會被自動移除）')) {
+              state.users = state.users.filter(x => x.id !== u.id);
+              save(); renderAll();
+            }
+          }
+        });
+        ul.appendChild(li);
+      });
+    }
+
+    // ---- 週檢閱渲染 ----
+    function renderReviewLists() {
+      // 專案清點
+      const rp = $('#reviewProjects'); rp.innerHTML = '';
+      state.projects.filter(p => !p.archived).forEach(p => {
+        const owner = state.users.find(u => u.id === p.ownerId);
+        const div = document.createElement('div');
+        div.className = 'p-2 border rounded bg-white';
+        const tcount = state.tasks.filter(t => t.projectId === p.id).length;
+        div.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-medium">${p.name} ${p.starred ? '⭐' : ''}</div>
+              <div class="text-xs text-slate-500">${p.outcome || ''} ${p.due ? ' · 到期 '+formatDate(p.due) : ''} ${owner ? ' · ' + owner.name : ''} · 任務 ${tcount}</div>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="px-2 py-1 text-xs bg-slate-100 rounded" data-action="next">新增下一步</button>
+              <button class="px-2 py-1 text-xs bg-amber-100 text-amber-800 rounded" data-action="star">${p.starred?'取消焦點':'設為焦點'}</button>
+              <button class="px-2 py-1 text-xs bg-slate-100 rounded" data-action="done">結案</button>
+            </div>
+          </div>
+        `;
+        div.addEventListener('click', (e) => {
+          const el = e.target; if (!(el instanceof HTMLElement)) return;
+          if (el.getAttribute('data-action') === 'next') {
+            currentProjectId = p.id;
+            openTaskModal({projectId: p.id});
+          }
+          if (el.getAttribute('data-action') === 'star') {
+            p.starred = !p.starred; save(); renderReviewLists(); renderProjectsList();
+          }
+          if (el.getAttribute('data-action') === 'done') {
+            if (confirm('確認結案並封存？')) {
+              p.archived = true;
+              state.archives.push({ type:'project', payload: p, archivedAt: Date.now() });
+              save(); renderReviewLists(); renderProjectsList(); renderArchives();
+            }
+          }
+        });
+        rp.appendChild(div);
+      });
+
+      // 責任域
+      const ra = $('#reviewAreas'); ra.innerHTML = '';
+      state.areas.forEach(a => {
+        const owner = state.users.find(u => u.id === a.ownerId);
+        const div = document.createElement('div');
+        div.className = 'p-2 border rounded bg-white';
+        div.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-medium">${a.name}</div>
+              <div class="text-xs text-slate-500">${(a.metrics||[]).join(' · ')} ${owner ? ' · '+owner.name : ''}</div>
+            </div>
+            <button class="px-2 py-1 text-xs bg-slate-100 rounded" data-action="improve">新增改善任務</button>
+          </div>
+          <div class="mt-2 text-sm">SOP：${(a.sop||[]).map(s=> s.checked ? '✅' : '⬜').join(' ')}</div>
+        `;
+        div.addEventListener('click', (e) => {
+          const el = e.target; if (!(el instanceof HTMLElement)) return;
+          if (el.getAttribute('data-action') === 'improve') {
+            // 選一個專案承接改善
+            const active = state.projects.filter(p => !p.archived);
+            if (active.length === 0) return alert('尚無活躍專案可承接改善任務');
+            const names = active.map((p,i)=> `${i+1}. ${p.name}`).join('\n');
+            const pick = prompt(`選擇要承接改善任務的專案：\n${names}`);
+            const idx = parseInt(pick||'',10)-1;
+            if (idx>=0 && idx<active.length) {
+              const proj = active[idx];
+              const title = prompt('輸入改善任務的標題：', `改善 ${a.name} 的 ${a.metrics?.[0] || '指標'}`);
+              if (title) {
+                state.tasks.push({
+                  id: uid('t'), projectId: proj.id, title, desc: `來自責任域：${a.name}`,
+                  assigneeId: a.ownerId || '', due: '', priority:'P2', status:'todo', tags:['area-improve'], createdAt: Date.now()
+                });
+                save(); renderReviewLists(); renderCurrentProject();
+                showToast('已新增改善任務到專案');
+              }
+            }
+          }
+        });
+        ra.appendChild(div);
+      });
+
+      // 資源清理
+      const rr = $('#reviewResources'); rr.innerHTML = '';
+      state.resources.filter(r => !r.archived).forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'p-2 border rounded bg-white';
+        div.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-medium">${r.title}</div>
+              <div class="text-xs text-slate-500">${(r.tags||[]).join(', ')}</div>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="px-2 py-1 text-xs bg-slate-100 rounded" data-action="retag">標籤</button>
+              <button class="px-2 py-1 text-xs bg-slate-100 rounded" data-action="link">連到專案</button>
+              <button class="px-2 py-1 text-xs bg-slate-100 rounded" data-action="archive">封存</button>
+            </div>
+          </div>
+        `;
+        div.addEventListener('click', (e) => {
+          const el = e.target; if (!(el instanceof HTMLElement)) return;
+          const a = el.getAttribute('data-action');
+          if (a === 'retag') {
+            const tags = prompt('更新標籤（逗號分隔）', (r.tags||[]).join(', '));
+            if (tags !== null) { r.tags = tags.split(',').map(s=>s.trim()).filter(Boolean); save(); renderReviewLists(); }
+          }
+          if (a === 'link') {
+            const active = state.projects.filter(p => !p.archived);
+            if (active.length === 0) return alert('尚無活躍專案');
+            const names = active.map((p,i)=> `${i+1}. ${p.name}`).join('\n');
+            const pick = prompt(`選擇要連結的專案編號：\n${names}`);
+            const idx = parseInt(pick||'',10)-1;
+            if (idx>=0 && idx<active.length) {
+              const proj = active[idx];
+              r.tags = Array.from(new Set([...(r.tags||[]), `proj:${proj.name}`]));
+              save(); renderReviewLists(); showToast('已連結到專案標籤');
+            }
+          }
+          if (a === 'archive') {
+            r.archived = true;
+            state.archives.push({type:'resource',payload:r, archivedAt: Date.now()});
+            save(); renderReviewLists(); renderArchives(); renderResources();
+          }
+        });
+        rr.appendChild(div);
+      });
+
+      // 焦點清單
+      const rf = $('#reviewFocus'); rf.innerHTML = '';
+      state.projects.filter(p => !p.archived).sort((a,b)=>b.starred - a.starred).forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'p-2 border rounded bg-white flex items-center justify-between';
+        div.innerHTML = `
+          <div>${p.starred?'⭐ ':''}${p.name}</div>
+          <button class="px-2 py-1 text-xs bg-amber-100 text-amber-800 rounded" data-id="${p.id}">${p.starred?'取消焦點':'設為焦點'}</button>
+        `;
+        div.addEventListener('click', (e)=> {
+          const btn = e.target; if (!(btn instanceof HTMLElement)) return;
+          const id = btn.getAttribute('data-id'); if (!id) return;
+          const proj = state.projects.find(x=>x.id===id);
+          proj.starred = !proj.starred; save(); renderReviewLists(); renderProjectsList();
+        });
+        rf.appendChild(div);
+      });
+    }
+
+    // ========= 事件綁定 =========
+    // 分頁切換
+    $$('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        $$('.tab-btn').forEach(b => b.classList.remove('border-b-2','border-blue-600','text-blue-600'));
+        btn.classList.add('border-b-2','border-blue-600','text-blue-600');
+        const name = btn.getAttribute('data-tab');
+        $$('.tab-page').forEach(p => p.classList.add('hidden'));
+        $(`#tab-${name}`).classList.remove('hidden');
+      });
+    });
+
+    // 全域搜尋
+    $('#btnSearch').addEventListener('click', onSearch);
+    $('#globalSearch').addEventListener('keydown', (e)=> { if (e.key==='Enter') onSearch(); });
+    function onSearch() {
+      const q = ($('#globalSearch').value || '').toLowerCase().trim();
+      if (!q) return showToast('請輸入關鍵字');
+      // 簡單結果彙整
+      const hits = [];
+      state.projects.forEach(p => {
+        const hay = [p.name, p.outcome, ...(p.tags||[])].join(' ').toLowerCase();
+        if (hay.includes(q)) hits.push({type:'專案', title:p.name});
+      });
+      state.tasks.forEach(t => {
+        const hay = [t.title, t.desc, ...(t.tags||[])].join(' ').toLowerCase();
+        if (hay.includes(q)) hits.push({type:'任務', title:t.title});
+      });
+      state.areas.forEach(a => {
+        const hay = [a.name, ...(a.metrics||[]), ...(a.sop||[]).map(s=>s.text)].join(' ').toLowerCase();
+        if (hay.includes(q)) hits.push({type:'責任域', title:a.name});
+      });
+      state.resources.forEach(r => {
+        const hay = [r.title, r.summary, ...(r.tags||[])].join(' ').toLowerCase();
+        if (hay.includes(q)) hits.push({type:'資源', title:r.title});
+      });
+      alert(hits.length ? hits.map(h=> `${h.type} · ${h.title}`).join('\n') : '找不到符合的結果');
+    }
+
+    // 專案新增/編輯
+    $('#btnAddProject').addEventListener('click', ()=> openProjectModal());
+    $('#btnEditProject').addEventListener('click', ()=> {
+      const p = state.projects.find(x => x.id === currentProjectId && !x.archived);
+      if (!p) return showToast('請先選擇專案');
+      openProjectModal(p);
+    });
+    $('#btnStarProject').addEventListener('click', ()=> {
+      const p = state.projects.find(x => x.id === currentProjectId && !x.archived);
+      if (!p) return;
+      p.starred = !p.starred; save(); renderProjectsList(); renderCurrentProject();
+    });
+    $('#btnArchiveProject').addEventListener('click', ()=> {
+      const p = state.projects.find(x => x.id === currentProjectId && !x.archived);
+      if (!p) return;
+      if (confirm('確認封存此專案？')) {
+        p.archived = true; state.archives.push({ type:'project', payload:p, archivedAt: Date.now()});
+        save(); currentProjectId = null; renderProjectsList(); renderCurrentProject(); renderArchives();
+      }
+    });
+
+    // 任務新增
+    $('#btnAddTask').addEventListener('click', ()=> {
+      const p = state.projects.find(x => x.id === currentProjectId && !x.archived);
+      if (!p) return showToast('請先選擇專案');
+      openTaskModal({projectId: p.id});
+    });
+
+    // 匯出/匯入
+    $('#btnExport').addEventListener('click', ()=> {
+      const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (state.meta?.workspace || 'para-workspace') + '-' + new Date().toISOString().slice(0,10) + '.json';
+      a.click();
+    });
+    $('#importFile').addEventListener('change', (e)=> {
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          if (!data.projects || !data.tasks) throw new Error('格式不正確');
+          state = data; save(); renderAll(); showToast('匯入完成');
+        } catch(err) {
+          alert('匯入失敗：' + err.message);
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+    });
+
+    // 模板
+    $('#btnTemplates').addEventListener('click', () => openTemplates());
+
+    // 說明
+    $('#btnHelp').addEventListener('click', ()=> {
+      // 切換到說明頁
+      $$('[data-tab]').forEach(b => b.classList.remove('border-b-2','border-blue-600','text-blue-600'));
+      $$('[data-tab="about"]')[0].classList.add('border-b-2','border-blue-600','text-blue-600');
+      $$('.tab-page').forEach(p => p.classList.add('hidden'));
+      $('#tab-about').classList.remove('hidden');
+    });
+
+    // 責任域與資源
+    $('#btnAddArea').addEventListener('click', ()=> openAreaModal());
+    $('#btnAddResource').addEventListener('click', ()=> openResourceModal());
+    $('#resourceSearch').addEventListener('input', renderResources);
+
+    // 週檢閱展開
+    $('#btnReviewStep1').addEventListener('click', ()=> $('#reviewStep1').classList.toggle('hidden'));
+    $('#btnReviewStep2').addEventListener('click', ()=> $('#reviewStep2').classList.toggle('hidden'));
+    $('#btnReviewStep3').addEventListener('click', ()=> $('#reviewStep3').classList.toggle('hidden'));
+    $('#btnReviewStep4').addEventListener('click', ()=> $('#reviewStep4').classList.toggle('hidden'));
+    $('#btnApplyWip').addEventListener('click', ()=> {
+      const v = parseInt($('#wipLimitInput').value || '5',10);
+      state.settings.wipLimit = Math.max(1, v); save(); renderProjectsList(); showToast('已更新 WIP 上限');
+    });
+
+    // 成員/設定
+    $('#btnAddUser').addEventListener('click', ()=> {
+      const name = prompt('成員名稱：'); if (!name) return;
+      const color = '#'+Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');
+      state.users.push({ id: uid('u'), name, color }); save(); renderAll();
+    });
+    $('#workspaceName').addEventListener('input', (e)=> { state.meta.workspace = e.target.value; save(); document.title = `${state.meta.workspace} · PARA`; });
+    $('#wipLimitSetting').addEventListener('input', (e)=> { const v = parseInt(e.target.value||'5',10); state.settings.wipLimit = Math.max(1,v); save(); });
+    $('#btnResetApp').addEventListener('click', ()=> {
+      if (confirm('確定要清空所有資料？此動作無法復原')) {
+        localStorage.removeItem(STORAGE_KEY); location.reload();
+      }
+    });
+
+    // ========= 對話框邏輯 =========
+    function openProjectModal(p=null) {
+      $('#modalProjectTitle').textContent = p ? '編輯專案' : '新增專案';
+      $('#projName').value = p?.name || '';
+      $('#projOutcome').value = p?.outcome || '';
+      $('#projOwner').value = p?.ownerId || '';
+      $('#projDue').value = p?.due || '';
+      $('#projTags').value = (p?.tags || []).join(', ');
+      $('#modalProject').classList.remove('hidden','opacity-0'); $('#modalProject').classList.add('flex');
+      $('#btnSaveProject').onclick = () => {
+        const name = $('#projName').value.trim(); if (!name) return alert('請輸入專案名稱');
+        const obj = {
+          name,
+          outcome: $('#projOutcome').value.trim(),
+          ownerId: $('#projOwner').value || '',
+          due: $('#projDue').value || '',
+          tags: $('#projTags').value.split(',').map(s=>s.trim()).filter(Boolean)
+        };
+        if (p) {
+          Object.assign(p, obj);
+        } else {
+          const np = { id: uid('p'), ...obj, starred:false, archived:false, createdAt: Date.now() };
+          state.projects.push(np); currentProjectId = np.id;
+        }
+        save(); renderProjectsList(); renderCurrentProject();
+        closeModal('#modalProject');
+      };
+    }
+    function openTaskModal(t=null) {
+      $('#modalTaskTitle').textContent = t?.id ? '編輯任務' : '新增任務';
+      $('#taskTitle').value = t?.title || '';
+      $('#taskDesc').value = t?.desc || '';
+      $('#taskAssignee').value = t?.assigneeId || '';
+      $('#taskDue').value = t?.due || '';
+      $('#taskPriority').value = t?.priority || 'P2';
+      $('#taskTags').value = (t?.tags || []).join(', ');
+      $('#modalTask').classList.remove('hidden','opacity-0'); $('#modalTask').classList.add('flex');
+      $('#btnSaveTask').onclick = () => {
+        const title = $('#taskTitle').value.trim(); if (!title) return alert('請輸入任務標題');
+        const obj = {
+          title,
+          desc: $('#taskDesc').value.trim(),
+          assigneeId: $('#taskAssignee').value || '',
+          due: $('#taskDue').value || '',
+          priority: $('#taskPriority').value || 'P2',
+          tags: $('#taskTags').value.split(',').map(s=>s.trim()).filter(Boolean)
+        };
+        if (t && t.id) {
+          Object.assign(t, obj);
+        } else {
+          const pid = t?.projectId || currentProjectId;
+          state.tasks.push({ id: uid('t'), projectId: pid, status:'todo', createdAt: Date.now(), ...obj });
+        }
+        save(); renderCurrentProject();
+        closeModal('#modalTask');
+      };
+    }
+    function openAreaModal(a=null) {
+      $('#modalAreaTitle').textContent = a?.id ? '編輯責任域' : '新增責任域';
+      $('#areaName').value = a?.name || '';
+      $('#areaMetrics').value = (a?.metrics || []).join(', ');
+      $('#areaSop').value = (a?.sop || []).map(s=>s.text).join('\n');
+      $('#areaOwner').value = a?.ownerId || '';
+      $('#modalArea').classList.remove('hidden','opacity-0'); $('#modalArea').classList.add('flex');
+      $('#btnSaveArea').onclick = () => {
+        const name = $('#areaName').value.trim(); if (!name) return alert('請輸入名稱');
+        const obj = {
+          name,
+          metrics: $('#areaMetrics').value.split(',').map(s=>s.trim()).filter(Boolean),
+          sop: $('#areaSop').value.split('\n').map(s=>s.trim()).filter(Boolean).map(t=>({id:uid('s'),text:t,checked:false})),
+          ownerId: $('#areaOwner').value || ''
+        };
+        if (a && a.id) {
+          obj.sop = $('#areaSop').value.split('\n').map((txt,i)=> {
+            const exists = a.sop?.[i]; return exists ? {...exists, text:txt} : {id:uid('s'),text:txt,checked:false};
+          }).filter(s=>s.text);
+          Object.assign(a, obj);
+        } else {
+          state.areas.push({ id: uid('a'), createdAt: Date.now(), ...obj });
+        }
+        save(); renderAreas(); renderReviewLists();
+        closeModal('#modalArea');
+      };
+    }
+    function openResourceModal(r=null) {
+      $('#modalResourceTitle').textContent = r?.id ? '編輯資源' : '新增資源';
+      $('#resTitle').value = r?.title || '';
+      $('#resSummary').value = r?.summary || '';
+      $('#resLinks').value = (r?.links || []).join(', ');
+      $('#resTags').value = (r?.tags || []).join(', ');
+      $('#modalResource').classList.remove('hidden','opacity-0'); $('#modalResource').classList.add('flex');
+      $('#btnSaveResource').onclick = () => {
+        const title = $('#resTitle').value.trim(); if (!title) return alert('請輸入主題');
+        const obj = {
+          title,
+          summary: $('#resSummary').value.trim(),
+          links: $('#resLinks').value.split(',').map(s=>s.trim()).filter(Boolean),
+          tags: $('#resTags').value.split(',').map(s=>s.trim()).filter(Boolean),
+          archived: false
+        };
+        if (r && r.id) Object.assign(r, obj);
+        else state.resources.push({ id: uid('r'), createdAt: Date.now(), ...obj });
+        save(); renderResources(); renderReviewLists();
+        closeModal('#modalResource');
+      };
+    }
+    function openTemplates() {
+      const choice = prompt(
+        '選擇模板：\n' +
+        '1. 軟體開發 Sprint（工程/程式開發）\n' +
+        '2. 業務開發 Campaign（B2B 拓客）\n' +
+        '3. 產品上線 GTM（跨部門協作）\n' +
+        '輸入編號：'
+      );
+      const pick = parseInt(choice||'',10);
+      if (pick === 1) templateEngineering();
+      if (pick === 2) templateSales();
+      if (pick === 3) templateGTM();
+    }
+    function templateEngineering() {
+      const ownerId = state.users[0]?.id || '';
+      const p = { id: uid('p'), name:'Sprint 本週目標', outcome:'交付 1 個可驗收的增量',
+        ownerId, due:'', tags:['sprint','engineering'], starred:true, archived:false, createdAt: Date.now() };
+      state.projects.push(p);
+      state.tasks.push(
+        { id:uid('t'), projectId:p.id, title:'撰寫 User Story 與驗收條件', desc:'以 INVEST 準則', assigneeId:ownerId, due:'', priority:'P1', status:'todo', tags:['agile'] },
+        { id:uid('t'), projectId:p.id, title:'開發與單元測試', desc:'測試涵蓋率 > 80%', assigneeId:'', due:'', priority:'P2', status:'todo', tags:['dev'] },
+        { id:uid('t'), projectId:p.id, title:'Code Review 與合併', desc:'至少 2 人審查', assigneeId:'', due:'', priority:'P2', status:'todo', tags:['review'] },
+        { id:uid('t'), projectId:p.id, title:'Staging 驗收', desc:'通過 E2E 測試', assigneeId:'', due:'', priority:'P2', status:'todo', tags:['qa'] }
+      );
+      // Areas: 工程效能
+      state.areas.push({ id:uid('a'), name:'工程效能', ownerId, metrics:['部署頻率≥每週','回滾時間<1h'],
+        sop:[{id:uid('s'),text:'每日站會',checked:false},{id:uid('s'),text:'回顧/檢討會',checked:false}], createdAt:Date.now() });
+      save(); renderAll(); showToast('已建立「軟體開發 Sprint」模板');
+    }
+    function templateSales() {
+      const ownerId = state.users[1]?.id || '';
+      const p = { id: uid('p'), name:'B2B 潛客拓展（Q 本月）', outcome:'新增 100 家 ICP 並完成 ABM 分層',
+        ownerId, due:'', tags:['sales','campaign'], starred:true, archived:false, createdAt: Date.now() };
+      state.projects.push(p);
+      state.tasks.push(
+        { id:uid('t'), projectId:p.id, title:'明確 ICP 準則', desc:'產業/規模/技術堆疊', assigneeId:ownerId, due:'', priority:'P1', status:'todo', tags:['icp'] },
+        { id:uid('t'), projectId:p.id, title:'佈署外聯腳本', desc:'Email/LinkedIn/電話節奏', assigneeId:'', due:'', priority:'P2', status:'todo', tags:['outreach'] },
+        { id:uid('t'), projectId:p.id, title:'建立 MQL→SQL 規則', desc:'定義門檻', assigneeId:'', due:'', priority:'P2', status:'todo', tags:['mql','sql'] }
+      );
+      state.areas.push({ id:uid('a'), name:'銷售作業標準', ownerId, metrics:['每週新增潛客≥50','回覆率≥8%'],
+        sop:[{id:uid('s'),text:'每週管道清理',checked:false},{id:uid('s'),text:'回訪腳本優化',checked:false}], createdAt:Date.now() });
+      save(); renderAll(); showToast('已建立「業務開發 Campaign」模板');
+    }
+    function templateGTM() {
+      const ownerId = state.users[2]?.id || '';
+      const p = { id: uid('p'), name:'產品上線（GTM）', outcome:'完成 Beta → GA 發表與銷售啟動',
+        ownerId, due:'', tags:['gtm','launch'], starred:true, archived:false, createdAt: Date.now() };
+      state.projects.push(p);
+      state.tasks.push(
+        { id:uid('t'), projectId:p.id, title:'定位與訊息屋', desc:'一句話價值主張', assigneeId:ownerId, due:'', priority:'P1', status:'todo', tags:['pm','pmMkt'] },
+        { id:uid('t'), projectId:p.id, title:'內容資產（官網/部落格/簡報）', desc:'與銷售腳本一致', assigneeId:'', due:'', priority:'P2', status:'todo', tags:['content'] },
+        { id:uid('t'), projectId:p.id, title:'客戶成功手冊', desc:'FAQ 與導入流程', assigneeId:'', due:'', priority:'P2', status:'todo', tags:['cs'] }
+      );
+      state.areas.push({ id:uid('a'), name:'品牌與市場動能', ownerId, metrics:['網站轉換率≥X%','PR 曝光每月≥Y'],
+        sop:[{id:uid('s'),text:'每週內容排程',checked:false},{id:uid('s'),text:'月度成效回顧',checked:false}], createdAt:Date.now() });
+      save(); renderAll(); showToast('已建立「產品上線 GTM」模板');
+    }
+
+    function closeModal(sel) {
+      const m = $(sel); m.classList.add('hidden'); m.classList.remove('flex');
+    }
+    $$('[data-close]').forEach(btn => btn.addEventListener('click', ()=> closeModal(btn.getAttribute('data-close'))));
+
+    // ========= 初始化 =========
+    window.addEventListener('load', load);
+    // 快捷鍵
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'n' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openTaskModal({projectId: currentProjectId}); }
+      if (e.key === 'p' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openProjectModal(); }
+      if (e.key === 'f' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#globalSearch').focus(); }
+    });
+  </script>
+<script>window.parent.postMessage({ action: "ready" }, "*"); 
+ 
+window.console = new Proxy(console, {
+  get(target, prop) {
+    if (['log', 'warn', 'error'].includes(prop)) {
+      return new Proxy(target[prop], {
+        apply(fn, thisArg, args) {
+          fn.apply(thisArg, args);
+          window.parent.postMessage({ action: 'console', 
+            type: prop, 
+            args: args.map((arg) => {
+              try {
+                return JSON.stringify(arg).replace(/^["']|["']$/g, '');
+              } catch (e) {
+                return arg;
+              }
+            }) 
+          }, '*');
+        }
+      });
+    }
+    return target[prop];
+  }
+});
+</script></body>
+</html>
